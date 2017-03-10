@@ -12,21 +12,13 @@
 #include <sstream>
 #include <vector>
 #include <cmath>
-#include <ctime>
+#include <petscksp.h>
 #include "mdarray.h"
 using namespace std;
 
-//void matrix_inverse ( double am[7000], double bm[800] ,int numn , double *xT);
 vector<double> gauss(vector< vector<double> > A);
-//void print(vector< vector<double> > A);
-/*
-const int numb    = 32;
-const int numnode = 93;
-const int numcell = 152;
-*/
 int numb, numnode, numcell;
 const double PI = 4.0 * atan(1.0);
-//const double WFACTOR = 2;
 
 void get_inputfile_data (CMDArray<double>& data_matrix) {
     ifstream fin("inputfile.dat");
@@ -278,48 +270,7 @@ void get_coefficient(const int nedge, int iband, int inf, int numbDr,
                             break;
                         }
                     }
-                    /*
-                    if (p(neledge[iedge][0]) == 0.0 &&
-                            p(neledge[iedge][1]) == 0.0){
-                        // cout<<"1  ie-ie1 "<<ie<<" "<<ie1<<endl;
-                        // cout<<p[neledge[iedge][0]]<<" "<<p[neledge[iedge][0]+numnode]<<"    "<<p[neledge[iedge][1]]<<" "<<p[neledge[iedge][1]+numnode]<<endl;
-                        // cout<<p[nell[0]]<<" "<<p[nell[0]+numnode]<<"   "<<p[nell[1]]<<" "<<p[nell[1]+numnode]<<"   "<<p[nell[2]]<<" "<<p[nell[2]+numnode]<<endl;
-                        // cout<<"";
-                        if ((p(nell[0]) == 0.0 && p(nell[1]) == 0.0) ||
-                            (p(nell[0]) == 0.0 && p(nell[2]) == 0.0) ||
-                            (p(nell[1]) == 0.0 && p(nell[2]) == 0.0) ) {
-                            // cout<<"2  ie-ie1 "<<ie<<" "<<ie1<<endl;
-                            //  cout<<p[neledge[iedge][0]]<<" "<<p[neledge[iedge][0]+numnode]<<"    "<<p[neledge[iedge][1]]<<" "<<p[neledge[iedge][1]+numnode]<<endl;
-                            //  cout<<p[nell[0]]<<" "<<p[nell[0]+numnode]<<"   "<<p[nell[1]]<<" "<<p[nell[1]+numnode]<<"   "<<p[nell[2]]<<" "<<p[nell[2]+numnode]<<endl;
-                            //  cout<<"";
-                            if ((p(neledge[iedge][0] + numnode) == p(nell[0] + numnode)
-                                 && p(neledge[iedge][1] + numnode) == p(nell[1] + numnode)) ||
-                                (p(neledge[iedge][0] + numnode) == p(nell[1] + numnode)
-                                 && p(neledge[iedge][1] + numnode) == p(nell[0] + numnode)) ||
-                                (p(neledge[iedge][0] + numnode) == p(nell[0] + numnode)
-                                 && p(neledge[iedge][1] + numnode) == p(nell[2] + numnode)) ||
-                                (p(neledge[iedge][0] + numnode) == p(nell[2] + numnode)
-                                 && p(neledge[iedge][1] + numnode) == p(nell[0] + numnode)) ||
-                                (p(neledge[iedge][0] + numnode) == p(nell[1] + numnode)
-                                 && p(neledge[iedge][1] + numnode) == p(nell[2] + numnode)) ||
-                                (p(neledge[iedge][0] + numnode) == p(nell[2] + numnode)
-                                 && p(neledge[iedge][1] + numnode) == p(nell[1] + numnode))) {
-                                if (ie != 62 && ie != 214 && ie != 100 && ie != 252 &&
-                                    // ie!=16 and ie!=168 and ie!=54 and ie!=206 and ie!=15 and ie!=167 and ie!=53  and ie!=205 and
-                                    ie != 79 && ie != 231 && ie != 3 && ie != 155) {
-                                    ineighb = 1;
-                                    eneighb = ie1;
-                                    //     cout<<ie<<" "<<ie1<<endl;
-                                    break;
-                                }
-                                // cout<<"3  ie-ie1 "<<ie<<" "<<ie1<<endl;
-                                // cout<<p[neledge[iedge][0]]<<" "<<p[neledge[iedge][0]+numnode]<<"    "<<p[neledge[iedge][1]]<<" "<<p[neledge[iedge][1]+numnode]<<endl;
-                                // cout<<p[nell[0]]<<" "<<p[nell[0]+numnode]<<"   "<<p[nell[1]]<<" "<<p[nell[1]+numnode]<<"   "<<p[nell[2]]<<" "<<p[nell[2]+numnode]<<endl;
-                                // cout<<"";
-                            }
-                        }
-                    }
-                    */
+
                     int ib;
                     for (ib = 0; ib < numbDr; ib++){
                         if ((neledge[iedge][0] == eboundary(ib) &&
@@ -751,7 +702,7 @@ void get_coefficient(const int nedge, int iband, int inf, int numbDr,
     }//ie
 }
 
-vector<double> solve_matrix (CMDArray<double>& Ke, CMDArray<double>& Re) {
+vector<double> solve_matrix_gauss (CMDArray<double>& Ke, CMDArray<double>& Re) {
 
     CMDArray<double> Km_active(numcell * numcell);
     CMDArray<double> Re_active(numcell);
@@ -770,7 +721,69 @@ vector<double> solve_matrix (CMDArray<double>& Ke, CMDArray<double>& Re) {
     return x;
 }
 
-void get_cell_temp (int iband, int nftot, CMDArray<double>& e0,
+vector<double> solve_matrix_PETSc (CMDArray<double>& Ke, CMDArray<double>& Re) {
+    int* nnz = new int[numcell], count;
+    for (int i = 0; i < numcell; i++) {
+        count = 0;
+        for (int j = 0; j < numcell; j++)
+            if (Ke(i, j) != 0)
+                count++;
+        *(nnz + i) = count;
+    }
+    static char help[] = "Solving matrix.\n\n";
+    const double offset = 1e16;
+    PetscInitialize(NULL, NULL, (char*)0, help);
+    Mat	 A;        //matrix definition
+    Vec xxx, bbb;   //vector definition
+    PetscScalar  v, u, yyy[numcell]; //double in c++
+    PetscInt iii, jjj, one, ix[numcell]; //integer in c++
+    KSP ksp;   //solver of matrix
+    MatCreateSeqAIJ(PETSC_COMM_SELF, numcell, numcell, 3, nnz, &A);
+    //numm=numcell; 3 maximun non zero ; nnz : number of non zero in each row
+    for (iii = 0;iii < numcell; iii++){
+        for (jjj = 0; jjj < numcell; jjj++){
+            if (Ke(iii, jjj) != 0) {
+                v = Ke(iii, jjj) * offset; //make bigger digits
+                MatSetValues(A, 1, &iii, 1, &jjj, &v, ADD_VALUES);
+                // copy Ke to Petsc; 1 1 for 1 elements in matrix
+            }
+        }
+    }
+    MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
+    //MatView(A,PETSC_VIEWER_STDOUT_WORLD);//print the matrix
+    VecCreate(PETSC_COMM_WORLD, &bbb); // create bbb
+    VecSetSizes(bbb, PETSC_DECIDE, numcell); //set the size for bbb (right hand side value)
+    VecSetFromOptions(bbb);
+    VecDuplicate(bbb, &xxx); // create anothe solution vector (xxx)
+    for (iii = 0; iii < numcell; iii++){
+        u = Re(iii) * offset;// make bigger digits
+        VecSetValues(bbb, 1, &iii, &u, ADD_VALUES);//set value for bbb just one value in each time
+    }
+    //VecView(bbb,PETSC_VIEWER_STDOUT_WORLD);//print vector
+///create solver of the system
+    KSPCreate(PETSC_COMM_WORLD, &ksp);
+    KSPSetOperators(ksp, A, A); //format of petsc ;
+    KSPSetFromOptions(ksp);
+
+    KSPSolve(ksp,bbb,xxx); ///solve the matrix
+    //VecView(xxx,PETSC_VIEWER_STDOUT_WORLD); //the results is xxx
+
+    one = numcell;
+    vector<double> x(numcell);
+
+    for (iii = 0; iii < numcell; iii++)
+        ix[iii]=iii;
+
+    VecGetValues(xxx, one, ix, yyy);
+    // send value from petsc to petsc another format ( petsc scaler : yyy) (xxx:vector . can not do operation on that)
+    for (iii = 0; iii < numcell; iii++)
+        x[iii]=yyy[iii];
+    return x;
+/// finished petsc
+}
+
+void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>& e0,
                     CMDArray<double>& ee_n, CMDArray<double>& weight,
                     CMDArray<double>& Temp_n, double* C_n, double Tref, ofstream& fout) {
     Temp_n.set_zero();
@@ -814,7 +827,8 @@ void get_cell_temp (int iband, int nftot, CMDArray<double>& e0,
     fout << endl;*/
     /*fout << "Temp_n:" << endl;*/
     for (int i2 = 0; i2 < numcell; i2++)
-        fout << Temp_n(i2,iband) << endl;
+        fout << i2 << ' ' << Cc(i2, 0) << ' '  << Cc(i2, 1)
+             << ' ' << Temp_n(i2,iband) << endl;
 ///non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-\\\.
 }
 
@@ -871,7 +885,7 @@ void interpolation(int nband, CMDArray<double>& Temp,
                 //cout<<(1/(   sqrt(  ( pow((Cc[elmnod[inode][ino]][0]-p[inode]),2)+pow((Cc[elmnod[inode][ino]][1]-p[inode+numnode]),2)  )   )))<<" "<<node_r_m1T[inode]<<" "<<endl;
                 //cout<<"";
             }
-            fout << p(inode) << " " << p(inode + numnode)
+            fout << inode << ' ' << p(inode) << " " << p(inode + numnode)
                  << " " << Temnode_n(inode) << endl;
             //}
             // else if (BcDirich[inode]==1){
@@ -1123,28 +1137,36 @@ int main (void) {
     int nrighti1, ndiffrighti1;
     int nlefti, ndifflefti;
 
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> ntop >> ndifftop >> new_line;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> nbottom >> ndiffbottom >> new_line;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> nright >> new_line;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> nleft >> new_line;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> ntopi >> ndifftopi >> new_line;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> nbottomi >> ndiffbottomi >> new_line;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> nrighti >> ndiffrighti >> new_line;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> nrighti1 >> ndiffrighti1 >> new_line;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> nlefti >> ndifflefti >> new_line;
 
     int eboundary_num;
-    getline(fin_const,str);
+    getline(fin_const, str);
     fin_const >> eboundary_num >> new_line;
+
+    bool is_Linux;
+    getline(fin_const, str);
+    fin_const >> is_Linux >> new_line;
+    vector<double> (*solve_matrix)(CMDArray<double>&, CMDArray<double>&);
+    if (is_Linux)
+        solve_matrix = solve_matrix_PETSc;
+    else solve_matrix = solve_matrix_gauss;
 
     CMDArray<double> data_matrix(20, eboundary_num);
     get_inputfile_data(data_matrix);
@@ -1175,13 +1197,11 @@ int main (void) {
     CMDArray<double> e0(numcell), Temp(numcell);
     initialize_e0(e0, Temp, Tleft, Tright);
     ee_n.set_zero();
-    //Temp_n.set_zero();
-    //e0_n.set_zero();
 
     CMDArray<double> Temnode(numnode), Temnode_n(numnode);
     const int nedge = 3;
 
-    cout << "Kn: " << Kn_n[0] << " nt: " << ntheta << ' ' << nphi << endl;
+    cout << "Kn: " << Kn_n[0] << " nt: " << ntheta << endl;
     clock_t t_start = clock();
     // Iteration
     for (int iter=0; iter < max_iter; iter++){
@@ -1226,7 +1246,7 @@ int main (void) {
                     cout << ee_n(i, j, iband) << ' ';
                 cout << endl;
             }*/
-            get_cell_temp(iband, nftot, e0, ee_n, weight, Temp_n, C_n, Tref, fout_cell);
+            get_cell_temp(iband, nftot, Cc, e0, ee_n, weight, Temp_n, C_n, Tref, fout_cell);
         }//iband
         recover_temp(e0_n, Temp_n, Temp, nband, R_n, C_n, Tref);
         interpolation(nband, Temp, Temnode_n, node_r_m1T, elmnod, nelemnode, Cc, p, t, fout_node);
@@ -1247,7 +1267,8 @@ int main (void) {
             break;
     }//iter
     clock_t t_end = clock();
-    cout << "Time used: " << (double)(t_end - t_start) / CLOCKS_PER_SEC << endl;
+    cout << "Time used: " << (double)(t_end - t_start) / CLOCKS_PER_SEC
+         << " sec" <<endl;
     delete[] tau_n;
     delete[] vg_n;
     delete[] Kn_n;
@@ -1255,191 +1276,6 @@ int main (void) {
     delete[] C_n;
     return 0;
 }
-
-
-
-
-
-
-//c...left and right  boundary energy flow rate (positive in x direction)
-//     sb1=abs(qleft(5)-qright(5))
-//     do j=2,m2
-//         qleft(j)=0.0
-//         qright(j)=0.0
-//         do nf=1,nfmax
-//            if(sweight(nf,1).gt.0) then
-//               qleft(j) = qleft(j) +
-//     1              sweight(nf,1)*vgroup*C_n[iband]*(t(1,j)-tref)
-//     1              /(4*PI)
-//               qright(j) = qright(j)
-//     1              + f(l2,j,nf)*vgroup*sweight(nf,1)
-//            else
-//               qright(j) = qright(j) +
-//     1              sweight(nf,1)*vgroup*C_n[iband]*(t(l1,j)-tref)
-//     1              /(4.*PI)
-//               qleft(j) = qleft(j)
-//     1                 +f(2,j,nf)*vgroup*sweight(nf,1)
-//           end if
-//        end do
-//        qleft(j) = ycv(j)*qleft(j)
-//        qright(j) = ycv(j)*qright(j)
-//     end do
-//
-//c... overall energy balance
-//      qnet =0.0
-//      do j=2,m2
-//         qnet = qnet + qleft(j)-qright(j)
-//      end do
-//      qmean=0.0
-//      do j=2,m2
-//         qmean = qmean + 0.5*(qleft(j)+qright(j))
-//      end do
-//      qmean = qmean/yl
-//      keff = xl*qmean/(tleft-tright)
-//      ksi = C_n[iband]*vgroup**2*tau/3.
-//      qball = C_n[iband]*vgroup*(tleft-tright)/4.
-//      qfour = ksi*(tleft-tright)/xl
-//
-//
-
-
-
-
-
-
-
-
-
-//****************//
-//    Functions   //
-//****************//
-//*****************************
-void matrix_inverse ( double am[7000], double bm[800] ,int numn , double *xT) //( double a,int n ){
-{
-// * C++ Program to Find Inverse of a Graph Matrix
-//*****************************
-//  Purpose : // matrix inversioon
-//  Parameters:
-//  Input,
-//  Output,
-//*****************************
-    using namespace std;
-    int i,j, k;
-    double a[350][350] = {0},d;
-    double b[350]= {0};
-    double xTT[350]= {0};
-//double xT[10]= {0};
-//cout<<"Enter the order of matrix ";
-//cin>>n;
-    int n=numn;
-//cout<<"Enter the elements\n";
-    int ij=0;
-    for (i = 1; i <= n; i++)
-    {
-        b[i]=bm[i-1];
-        for (j = 1; j <= n; j++)
-        {
-            //cin>>a[i][j];
-            //a[i][j]=am[i];
-            a[i][j]=am[ij];
-            ij=ij+1;
-        }
-    }
-//cout<<"Enter the right vector\n";
-//for (ii = 1; ii <= n; ii++)
-//{
-////  cin>>b[ii];
-//    b[ii]=bm[ii];
-//}
-    for (i = 1; i <= n; i++)
-    {
-        for (j = 1; j <= 2 * n; j++)
-        {
-            if (j == (i + n))
-            {
-                a[i][j] = 1;
-            }
-        }
-    }
-    for (i = n; i > 1; i--)
-    {
-        if (a[i-1][1] < a[i][1])
-        {
-            for (j = 1; j <= n * 2; j++)
-            {
-                d = a[i][j];
-                a[i][j] = a[i-1][j];
-                a[i-1][j] = d;
-            }
-        }
-    }
-//cout<<"Augmented Matrix: "<<endl;
-//for (i = 1; i <= n; i++)
-//{
-//    for (j = 1; j <= n * 2; j++)
-//    {
-//        cout<<a[i][j]<<"    ";
-//    }
-//        cout<<endl;
-//}
-
-    for (i = 1; i <= n; i++)
-    {
-        for (j = 1; j <= n * 2; j++)
-        {
-            if (j != i)
-            {
-                d = a[j][i] / a[i][i];
-                for (k = 1; k <= n * 2; k++)
-                {
-                    a[j][k] = a[j][k] - (a[i][k] * d);
-                }
-            }
-        }
-    }
-    n=numn;                                // !!!!!!!
-    for (i = 1; i <= n; i++)
-    {
-        d=a[i][i];
-        for (j = 1; j <= n * 2; j++)
-        {
-            a[i][j] = a[i][j] / d;
-        }
-    }
-//cout<<"Inverse Matrix a"<<endl;
-//for (i = 1; i <= n; i++)
-//{
-//    for (j = n + 1; j <= n * 2; j++)
-//    {
-//        cout<<a[i][j]<<"    ";
-//    }
-//     cout<<endl;
-//}
-    for (i = 1; i <= n; i++)
-    {
-//    cout<<n<<endl;
-        for (j = 1; j <= n; j++)
-        {
-//    cout<<x[i]<<" "<<a[i][j+n]<<" "<<b[j]<<" "<<endl;
-            xTT[i] = a[i][j+n]*b[j]+xTT[i];
-//    cout<<x[i]<<endl;
-        }
-    }
-//cout<<"  "<<endl;
-//cout<<"Solution is "<<endl;
-    for (i = 1; i <=n; i++)
-    {
-        xT[i-1]=xTT[i];
-    }
-    for (i = 0; i < n; i++)
-    {
-//    cout<<xT[i]<<endl;
-    }
-    cout<<endl;
-    n=numn;
-//return xT;
-}
-
 
 vector<double> gauss(vector< vector<double> > Km_Re)
 {
@@ -1504,7 +1340,7 @@ vector<double> gauss(vector< vector<double> > Km_Re)
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-
+/*
 void print(vector< vector<double> > A)
 {
     int n = A.size();
@@ -1522,21 +1358,4 @@ void print(vector< vector<double> > A)
     }
     cout << endl;
 }
-
-//{
-//    double area = 0.5 * ( //p(t)
-//    xe[0+0*2] * ( xe[1+1*2] - xe[1+2*2] ) +
-//    xe[0+1*2] * ( xe[1+2*2] - xe[1+0*2] ) +
-//    xe[0+2*2] * ( xe[1+0*2] - xe[1+1*2] ) );
-//}
-
-
-/*
-//      2D matrix with variable size;
-        int** ary = new int*[rowCount];
-            for(int i = 0; i < rowCount; ++i){
-                ary[i] = new int[colCount];
-            }
-        ary[1][1]=200;
-        cout<<ary[1][1];
 */
