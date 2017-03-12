@@ -1,0 +1,52 @@
+L_n=
+1.0e-11
+ntheta=
+1
+nphi=
+1
+WFACTOR=
+2
+max_iter_num=
+20000
+Tleft=
+301.00
+Tright=
+300.00
+Tref=
+300.00
+nband=
+1
+vg_n=
+1000 1000 1000 1000 1000
+R_n=
+1.0 0.2 0.2 0.2 0.2
+tau_n=
+1.0e-12 100e-12 100e-12 100e-12 100e-12
+C_n=
+12.9E+06 7.6E+06 7.6E+06 7.6E+06 7.6E+06
+ntop, ndifftop=
+2 20
+nbottom, ndiffbottom=
+1 20
+nright=
+8
+nleft=
+0
+ntopi, ndifftopi=
+20 20
+nbottomi, ndiffbottomi=
+20 20
+nrighti, ndiffrighti=
+207 20
+nrighti1, ndiffrighti1=
+20 20
+nlefti, ndifflefti=
+3 20
+is_linux=
+1
+boundary_omit=
+5
+boundary_equi:
+3 6
+1 4
+2 7
