@@ -10,113 +10,43 @@
 #include <iomanip>
 #include <fstream>
 #include <sstream>
+#include <set>
 #include <vector>
 #include <cmath>
 #include <petscksp.h>
 #include "mdarray.h"
 using namespace std;
 
+//void matrix_inverse ( double am[7000], double bm[800] ,int numn , double *xT);
 vector<double> gauss(vector< vector<double> > A);
+//void print(vector< vector<double> > A);
+/*
+const int numb    = 32;
+const int numnode = 93;
+const int numcell = 152;
+*/
 int numb, numnode, numcell;
 const double PI = 4.0 * atan(1.0);
+const double WFACTOR = 2;
 
-void get_inputfile_data (CMDArray<double>& data_matrix) {
-    ifstream fin("inputfile.dat");
-    int in_row=0;
-    string str;
-    while (getline(fin, str)){
-        stringstream ss;
-        ss.str(str);
-        if(str.at(0) >= 'a' && str.at(0) <= 'z') {
-            char c;
-            ss >> c;
-            switch (c){
-                case 'e':
-                    ss >> numb;
-                    break;
-                case 'p':
-                    ss >> numnode;
-                    break;
-                case 't':
-                    ss >> numcell;
-                    break;
-                default:
-                    break;
-
-            }
-        }
-        else {
-            int in_col = 0;
-            double data_in;
-            while (ss >> data_in) {
-                data_matrix(in_row, in_col) = data_in;
-                ++in_col;
-            }
-        }
-        ++in_row;
-    }
-    //cout << numb << ' ' << numnode << ' ' << numcell << endl;
-    fin.close();
+bool find_omit(int x, const set<int>& omit) {
+    return (omit.find(x) != omit.end());
 }
 
-void get_node_position (CMDArray<double>& p,
-                        CMDArray<double>& data_matrix,
-                        const double x_l) {
-    int iprow=0;
-    for (int ipn = 9; ipn < 11; ipn++){
-        for (int ip = 0; ip < numnode; ip++){
-            int ipnode=ip + numnode * iprow;
-            p(ipnode) = data_matrix(ipn, ip) * x_l;
-        }
-        ++iprow;
-    }
+int Find (int x, int *parent) {
+    if (*(parent + x) != x)
+        *(parent + x) = Find(*(parent + x), parent);
+    return *(parent + x);
 }
 
-int get_boundary_position (CMDArray<double>& data_matrix,
-                            CMDArray<int>& BcDirich,
-                            CMDArray<int>& eboundary,
-                            CMDArray<int>& t) {
-    int numbDr = 0, ip1 = 0, ipDr = 0, xxa;
-    ///.Boundary Condition numbers For Drichlet Boundary condition can be 1,2..,..
-    for (int ip = 0; ip < numb; ip++){
-        if (((int)data_matrix(5, ip)) >= 1 &&
-                ((int)data_matrix(5, ip)) <= 10){
-            numbDr++;
-            xxa = (int)data_matrix(1, ip);
-            BcDirich(xxa) = 1 ;
-            xxa = (int)data_matrix(2, ip);
-            BcDirich(xxa)=1;
-            //cout<<" "<<xxa<< " "<<BcDirich[xxa]<<endl;
-        }
-    }
-    for (int ip = 0; ip < numbDr; ip++){
-        ///. input file for Drichlet Boundary Condition numbers can be 1,2,3,4
-        if (((int)data_matrix(5, ip)) >= 1 &&
-            ((int)data_matrix(5, ip)) <= 10){
-            ip1 = ipDr + numbDr * 0;
-            eboundary(ip1) = (int)data_matrix(1, ip);
-            ip1 = ipDr + numbDr * 1;
-            eboundary(ip1) = (int)data_matrix(2, ip);
-            ip1 = ipDr + numbDr * 2;
-            eboundary(ip1) = (int)data_matrix(5, ip);
-            ip1 = ipDr + numbDr * 3;
-            eboundary(ip1) = (int)data_matrix(7, ip);
-            ++ipDr;
-        }
-        ///. input file for Boundary Condition numbers For Neumann  Boundary condition are 0,0
-        ///. input file for Neumann Boundary Condition numbers are 0,0
-    }
-    for (int ip = 0; ip < numcell; ip++){
-        ip1 = ip + numcell * 0;
-        t(ip1) = (int)data_matrix(12, ip);
-        ip1 = ip + numcell * 1;
-        t(ip1) = (int)data_matrix(13, ip);
-        ip1 = ip + numcell * 2;
-        t(ip1) = (int)data_matrix(14, ip);
-        ip1 = ip + numcell * 3;
-        t(ip1) = (int)data_matrix(15, ip);
-    }
-    return numbDr;
+void Union (int x, int y, int *parent) {
+    int a, b;
+    a = Find(x, parent);
+    b = Find(y, parent);
+
+    if (a < b)
+        *(parent + b) = a;
+    else *(parent + a) = b;
 }
 
 void get_direction(int nftot, int ntheta, int nphi, double WFACTOR,
@@ -270,7 +200,48 @@ void get_coefficient(const int nedge, int iband, int inf, int numbDr,
                             break;
                         }
                     }
-
+                    /*
+                    if (p(neledge[iedge][0]) == 0.0 &&
+                            p(neledge[iedge][1]) == 0.0){
+                        // cout<<"1  ie-ie1 "<<ie<<" "<<ie1<<endl;
+                        // cout<<p[neledge[iedge][0]]<<" "<<p[neledge[iedge][0]+numnode]<<"    "<<p[neledge[iedge][1]]<<" "<<p[neledge[iedge][1]+numnode]<<endl;
+                        // cout<<p[nell[0]]<<" "<<p[nell[0]+numnode]<<"   "<<p[nell[1]]<<" "<<p[nell[1]+numnode]<<"   "<<p[nell[2]]<<" "<<p[nell[2]+numnode]<<endl;
+                        // cout<<"";
+                        if ((p(nell[0]) == 0.0 && p(nell[1]) == 0.0) ||
+                            (p(nell[0]) == 0.0 && p(nell[2]) == 0.0) ||
+                            (p(nell[1]) == 0.0 && p(nell[2]) == 0.0) ) {
+                            // cout<<"2  ie-ie1 "<<ie<<" "<<ie1<<endl;
+                            //  cout<<p[neledge[iedge][0]]<<" "<<p[neledge[iedge][0]+numnode]<<"    "<<p[neledge[iedge][1]]<<" "<<p[neledge[iedge][1]+numnode]<<endl;
+                            //  cout<<p[nell[0]]<<" "<<p[nell[0]+numnode]<<"   "<<p[nell[1]]<<" "<<p[nell[1]+numnode]<<"   "<<p[nell[2]]<<" "<<p[nell[2]+numnode]<<endl;
+                            //  cout<<"";
+                            if ((p(neledge[iedge][0] + numnode) == p(nell[0] + numnode)
+                                 && p(neledge[iedge][1] + numnode) == p(nell[1] + numnode)) ||
+                                (p(neledge[iedge][0] + numnode) == p(nell[1] + numnode)
+                                 && p(neledge[iedge][1] + numnode) == p(nell[0] + numnode)) ||
+                                (p(neledge[iedge][0] + numnode) == p(nell[0] + numnode)
+                                 && p(neledge[iedge][1] + numnode) == p(nell[2] + numnode)) ||
+                                (p(neledge[iedge][0] + numnode) == p(nell[2] + numnode)
+                                 && p(neledge[iedge][1] + numnode) == p(nell[0] + numnode)) ||
+                                (p(neledge[iedge][0] + numnode) == p(nell[1] + numnode)
+                                 && p(neledge[iedge][1] + numnode) == p(nell[2] + numnode)) ||
+                                (p(neledge[iedge][0] + numnode) == p(nell[2] + numnode)
+                                 && p(neledge[iedge][1] + numnode) == p(nell[1] + numnode))) {
+                                if (ie != 62 && ie != 214 && ie != 100 && ie != 252 &&
+                                    // ie!=16 and ie!=168 and ie!=54 and ie!=206 and ie!=15 and ie!=167 and ie!=53  and ie!=205 and
+                                    ie != 79 && ie != 231 && ie != 3 && ie != 155) {
+                                    ineighb = 1;
+                                    eneighb = ie1;
+                                    //     cout<<ie<<" "<<ie1<<endl;
+                                    break;
+                                }
+                                // cout<<"3  ie-ie1 "<<ie<<" "<<ie1<<endl;
+                                // cout<<p[neledge[iedge][0]]<<" "<<p[neledge[iedge][0]+numnode]<<"    "<<p[neledge[iedge][1]]<<" "<<p[neledge[iedge][1]+numnode]<<endl;
+                                // cout<<p[nell[0]]<<" "<<p[nell[0]+numnode]<<"   "<<p[nell[1]]<<" "<<p[nell[1]+numnode]<<"   "<<p[nell[2]]<<" "<<p[nell[2]+numnode]<<endl;
+                                // cout<<"";
+                            }
+                        }
+                    }
+                    */
                     int ib;
                     for (ib = 0; ib < numbDr; ib++){
                         if ((neledge[iedge][0] == eboundary(ib) &&
@@ -703,7 +674,12 @@ void get_coefficient(const int nedge, int iband, int inf, int numbDr,
 }
 
 vector<double> solve_matrix_gauss (CMDArray<double>& Ke, CMDArray<double>& Re) {
-
+    //ofstream fout("solution.out");
+    //for (int i = 0; i < numcell; i++){
+    	//for (int j = 0; j < numcell; j++)
+             //fout << Ke(i, j) << ' ';
+        //fout << Re(i) << endl;
+    //}
     CMDArray<double> Km_active(numcell * numcell);
     CMDArray<double> Re_active(numcell);
 
@@ -718,10 +694,15 @@ vector<double> solve_matrix_gauss (CMDArray<double>& Ke, CMDArray<double>& Re) {
     }
     vector<double> x(numcell) ;
     x = gauss(Km_Re);
+    /*for (int i = 0; i < numcell; i++)
+	fout << i << ' ' << x[i] << endl;
+    */
+    //fout.close();
     return x;
 }
 
 vector<double> solve_matrix_PETSc (CMDArray<double>& Ke, CMDArray<double>& Re) {
+    //ofstream fout("solution.out");
     int* nnz = new int[numcell], count;
     for (int i = 0; i < numcell; i++) {
         count = 0;
@@ -730,6 +711,11 @@ vector<double> solve_matrix_PETSc (CMDArray<double>& Ke, CMDArray<double>& Re) {
                 count++;
         *(nnz + i) = count;
     }
+    //for (int i = 0; i < numcell; i++){
+    	//for (int j = 0; j < numcell; j++)
+             //fout << Ke(i, j) << ' ';
+        //fout << Re(i) << endl;
+    //}
     static char help[] = "Solving matrix.\n\n";
     const double offset = 1e16;
     PetscInitialize(NULL, NULL, (char*)0, help);
@@ -755,7 +741,7 @@ vector<double> solve_matrix_PETSc (CMDArray<double>& Ke, CMDArray<double>& Re) {
     VecCreate(PETSC_COMM_WORLD, &bbb); // create bbb
     VecSetSizes(bbb, PETSC_DECIDE, numcell); //set the size for bbb (right hand side value)
     VecSetFromOptions(bbb);
-    VecDuplicate(bbb, &xxx); // create anothe solution vector (xxx)
+    VecDuplicate(bbb, &xxx); // create another solution vector (xxx)
     for (iii = 0; iii < numcell; iii++){
         u = Re(iii) * offset;// make bigger digits
         VecSetValues(bbb, 1, &iii, &u, ADD_VALUES);//set value for bbb just one value in each time
@@ -779,8 +765,12 @@ vector<double> solve_matrix_PETSc (CMDArray<double>& Ke, CMDArray<double>& Re) {
     // send value from petsc to petsc another format ( petsc scaler : yyy) (xxx:vector . can not do operation on that)
     for (iii = 0; iii < numcell; iii++)
         x[iii]=yyy[iii];
+    /*for (int i = 0; i < numcell; i++)
+	fout << i << ' ' << x[i] << endl;
+    */
+    //fout.close();
     return x;
-/// finished petsc
+/// finished petsc 
 }
 
 void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>& e0,
@@ -827,8 +817,8 @@ void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>
     fout << endl;*/
     /*fout << "Temp_n:" << endl;*/
     for (int i2 = 0; i2 < numcell; i2++)
-        fout << i2 << ' ' << Cc(i2, 0) << ' '  << Cc(i2, 1)
-             << ' ' << Temp_n(i2,iband) << endl;
+        fout << i2 << ' ' << Cc(i2, 0) << ' '
+	     << Cc(i2, 1) << ' ' << Temp_n(i2,iband) << endl;
 ///non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-non_Gray-\\\.
 }
 
@@ -885,7 +875,7 @@ void interpolation(int nband, CMDArray<double>& Temp,
                 //cout<<(1/(   sqrt(  ( pow((Cc[elmnod[inode][ino]][0]-p[inode]),2)+pow((Cc[elmnod[inode][ino]][1]-p[inode+numnode]),2)  )   )))<<" "<<node_r_m1T[inode]<<" "<<endl;
                 //cout<<"";
             }
-            fout << inode << ' ' << p(inode) << " " << p(inode + numnode)
+            fout << inode << ' ' <<p(inode) << " " << p(inode + numnode)
                  << " " << Temnode_n(inode) << endl;
             //}
             // else if (BcDirich[inode]==1){
@@ -1064,7 +1054,7 @@ int main (void) {
     int ntheta, nphi, max_iter, nband;
     string str;
     char new_line;
-    ifstream fin_const("inputconst.dat");
+    ifstream fin_const("inputdata.dat");
     getline(fin_const, str);
     fin_const >> L_n >> new_line;
     getline(fin_const, str);
@@ -1137,48 +1127,132 @@ int main (void) {
     int nrighti1, ndiffrighti1;
     int nlefti, ndifflefti;
 
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> ntop >> ndifftop >> new_line;
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> nbottom >> ndiffbottom >> new_line;
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> nright >> new_line;
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> nleft >> new_line;
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> ntopi >> ndifftopi >> new_line;
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> nbottomi >> ndiffbottomi >> new_line;
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> nrighti >> ndiffrighti >> new_line;
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> nrighti1 >> ndiffrighti1 >> new_line;
-    getline(fin_const, str);
+    getline(fin_const,str);
     fin_const >> nlefti >> ndifflefti >> new_line;
-
-    int eboundary_num;
+    
+    bool is_linux;
     getline(fin_const, str);
-    fin_const >> eboundary_num >> new_line;
-
-    bool is_Linux;
-    getline(fin_const, str);
-    fin_const >> is_Linux >> new_line;
+    fin_const >> is_linux >> new_line;
     vector<double> (*solve_matrix)(CMDArray<double>&, CMDArray<double>&);
-    if (is_Linux)
+    if (is_linux)
         solve_matrix = solve_matrix_PETSc;
     else solve_matrix = solve_matrix_gauss;
 
-    CMDArray<double> data_matrix(20, eboundary_num);
-    get_inputfile_data(data_matrix);
-    CMDArray<double> p(4 * numnode);
-    CMDArray<int> BcDirich(numnode);
-    CMDArray<int> eboundary(eboundary_num);
-    CMDArray<int> t(4 * numcell);
-    double x_l = L_n, y_l = 1.0 * x_l;
-    int numbDr;
-    get_node_position(p, data_matrix, x_l);
+    double x_l = L_n;//y_l = 1.0 * x_l;
+    ifstream fin_mesh("inputmesh.dat");
+    // get node position
+    for (int i = 0; i < 18; i++)
+        getline(fin_mesh, str);
+    fin_mesh >> numnode;
+    CMDArray<double> p(2 * numnode);
+    for (int i = 0; i < 4; i++)
+        getline(fin_mesh, str);
+    //cout << numnode << endl;
+    for (int i = 0; i < numnode; i++) {
+        getline(fin_mesh, str);
+        stringstream sss;
+        sss.str(str);
+        string coord_x, coord_y;
+        sss >> coord_x >> coord_y;
+        p(i) = strtod(coord_x.c_str(), NULL) * x_l;
+        p(i + numnode) = strtod(coord_y.c_str(), NULL) * x_l;
+        //cout << i << ' ' << p(i) << ' ' << p(i + numnode) << endl;
+    }
 
-    numbDr = get_boundary_position(data_matrix, BcDirich, eboundary, t);
+    // get node position
+    int numb_ori;
+    for (int i = 0; i < 37; i++)
+        getline(fin_mesh, str);
+    fin_mesh >> numb_ori;
+    for (int i = 0; i < 2; i++)
+        getline(fin_mesh, str);
+    set<int> omit;
+    getline(fin_const, str);
+    getline(fin_const, str);
+    stringstream sss;
+    sss.str(str);
+    int num;
+    while (sss >> num) {
+        omit.insert(num);
+    }
+    int* equi = new int[numb_ori];
+    for (int i = 0; i < numb_ori; i++)
+        *(equi + i) = i;
+    getline(fin_const, str);
+    while (getline(fin_const, str)) {
+        stringstream sse;
+        sse.str(str);
+        int x, y;
+        sse >> x;
+        while (sse >> y) {
+            Union(x, y, equi);
+        }
+    }
+    CMDArray<int> eboundary_ori(3 * numb_ori);
+    for (int i = 0; i < numb_ori; i++) {
+        int x, y;
+        fin_mesh >> x >> y;
+        //cout << i << ' ' << x << ' ' << y << endl;
+        eboundary_ori(i) = x; eboundary_ori(i + numb_ori) = y;
+    }
+    for (int i = 0; i < 4; i++)
+        getline(fin_mesh, str);
+    numb = 0;
+    for (int i = 0; i < numb_ori; i++) {
+        getline(fin_mesh, str);
+        int x = atoi(str.c_str());
+        //cout << i << ' ' << x << endl;
+        if (find_omit(x, omit))
+            eboundary_ori(i + 2 * numb_ori) = -1;
+        else {
+            numb ++;
+            eboundary_ori(i + 2 * numb_ori) = equi[x];
+        }
+    }
+    //cout << numb << endl;
+    CMDArray<int> eboundary(3 * numb);
+    for (int i = 0, ii = 0; i < numb_ori; i++)
+        if (eboundary_ori(i + 2 * numb_ori) != -1) {
+            eboundary(ii) = eboundary_ori(i);
+            eboundary(ii + numb) = eboundary_ori(i + numb_ori);
+            eboundary(ii + 2 * numb) = eboundary_ori(i + 2 * numb_ori);
+            ii++;
+        }
+
+    // get cell position
+    for (int i = 0; i < 7; i++)
+        getline(fin_mesh, str);
+    fin_mesh >> numcell;
+    //cout << numcell << endl;
+    CMDArray<int> t(3 * numcell);
+    for (int i = 0; i < 2; i++)
+        getline(fin_mesh, str);
+    for (int i = 0; i < numcell; i++) {
+        int x, y, z;
+        fin_mesh >> x >> y >> z;
+        t(i) = x; t(i + numcell) = y; t(i + 2 * numcell) = z;
+    }
+    fin_const.close();
+    fin_mesh.close();
+    delete[] equi;
+    int numbDr = numb;
+
     int nftot = 4 * ntheta * nphi;
     CMDArray<double> sweight(nftot, 3), ss(nftot, 3), weight(nftot);
     get_direction(nftot, ntheta, nphi, WFACTOR, sweight, ss, weight);
@@ -1197,11 +1271,13 @@ int main (void) {
     CMDArray<double> e0(numcell), Temp(numcell);
     initialize_e0(e0, Temp, Tleft, Tright);
     ee_n.set_zero();
+    //Temp_n.set_zero();
+    //e0_n.set_zero();
 
     CMDArray<double> Temnode(numnode), Temnode_n(numnode);
     const int nedge = 3;
 
-    cout << "Kn: " << Kn_n[0] << " nt: " << ntheta << endl;
+    cout << "Kn: " << Kn_n[0] << " nt: " << ntheta << ' ' << nphi << endl;
     clock_t t_start = clock();
     // Iteration
     for (int iter=0; iter < max_iter; iter++){
@@ -1267,8 +1343,7 @@ int main (void) {
             break;
     }//iter
     clock_t t_end = clock();
-    cout << "Time used: " << (double)(t_end - t_start) / CLOCKS_PER_SEC
-         << " sec" <<endl;
+    cout << "Time used: " << (double)(t_end - t_start) / CLOCKS_PER_SEC << endl;
     delete[] tau_n;
     delete[] vg_n;
     delete[] Kn_n;
@@ -1276,6 +1351,191 @@ int main (void) {
     delete[] C_n;
     return 0;
 }
+
+
+
+
+
+
+//c...left and right  boundary energy flow rate (positive in x direction)
+//     sb1=abs(qleft(5)-qright(5))
+//     do j=2,m2
+//         qleft(j)=0.0
+//         qright(j)=0.0
+//         do nf=1,nfmax
+//            if(sweight(nf,1).gt.0) then
+//               qleft(j) = qleft(j) +
+//     1              sweight(nf,1)*vgroup*C_n[iband]*(t(1,j)-tref)
+//     1              /(4*PI)
+//               qright(j) = qright(j)
+//     1              + f(l2,j,nf)*vgroup*sweight(nf,1)
+//            else
+//               qright(j) = qright(j) +
+//     1              sweight(nf,1)*vgroup*C_n[iband]*(t(l1,j)-tref)
+//     1              /(4.*PI)
+//               qleft(j) = qleft(j)
+//     1                 +f(2,j,nf)*vgroup*sweight(nf,1)
+//           end if
+//        end do
+//        qleft(j) = ycv(j)*qleft(j)
+//        qright(j) = ycv(j)*qright(j)
+//     end do
+//
+//c... overall energy balance
+//      qnet =0.0
+//      do j=2,m2
+//         qnet = qnet + qleft(j)-qright(j)
+//      end do
+//      qmean=0.0
+//      do j=2,m2
+//         qmean = qmean + 0.5*(qleft(j)+qright(j))
+//      end do
+//      qmean = qmean/yl
+//      keff = xl*qmean/(tleft-tright)
+//      ksi = C_n[iband]*vgroup**2*tau/3.
+//      qball = C_n[iband]*vgroup*(tleft-tright)/4.
+//      qfour = ksi*(tleft-tright)/xl
+//
+//
+
+
+
+
+
+
+
+
+
+//****************//
+//    Functions   //
+//****************//
+//*****************************
+void matrix_inverse ( double am[7000], double bm[800] ,int numn , double *xT) //( double a,int n ){
+{
+// * C++ Program to Find Inverse of a Graph Matrix
+//*****************************
+//  Purpose : // matrix inversioon
+//  Parameters:
+//  Input,
+//  Output,
+//*****************************
+    using namespace std;
+    int i,j, k;
+    double a[350][350] = {0},d;
+    double b[350]= {0};
+    double xTT[350]= {0};
+//double xT[10]= {0};
+//cout<<"Enter the order of matrix ";
+//cin>>n;
+    int n=numn;
+//cout<<"Enter the elements\n";
+    int ij=0;
+    for (i = 1; i <= n; i++)
+    {
+        b[i]=bm[i-1];
+        for (j = 1; j <= n; j++)
+        {
+            //cin>>a[i][j];
+            //a[i][j]=am[i];
+            a[i][j]=am[ij];
+            ij=ij+1;
+        }
+    }
+//cout<<"Enter the right vector\n";
+//for (ii = 1; ii <= n; ii++)
+//{
+////  cin>>b[ii];
+//    b[ii]=bm[ii];
+//}
+    for (i = 1; i <= n; i++)
+    {
+        for (j = 1; j <= 2 * n; j++)
+        {
+            if (j == (i + n))
+            {
+                a[i][j] = 1;
+            }
+        }
+    }
+    for (i = n; i > 1; i--)
+    {
+        if (a[i-1][1] < a[i][1])
+        {
+            for (j = 1; j <= n * 2; j++)
+            {
+                d = a[i][j];
+                a[i][j] = a[i-1][j];
+                a[i-1][j] = d;
+            }
+        }
+    }
+//cout<<"Augmented Matrix: "<<endl;
+//for (i = 1; i <= n; i++)
+//{
+//    for (j = 1; j <= n * 2; j++)
+//    {
+//        cout<<a[i][j]<<"    ";
+//    }
+//        cout<<endl;
+//}
+
+    for (i = 1; i <= n; i++)
+    {
+        for (j = 1; j <= n * 2; j++)
+        {
+            if (j != i)
+            {
+                d = a[j][i] / a[i][i];
+                for (k = 1; k <= n * 2; k++)
+                {
+                    a[j][k] = a[j][k] - (a[i][k] * d);
+                }
+            }
+        }
+    }
+    n=numn;                                // !!!!!!!
+    for (i = 1; i <= n; i++)
+    {
+        d=a[i][i];
+        for (j = 1; j <= n * 2; j++)
+        {
+            a[i][j] = a[i][j] / d;
+        }
+    }
+//cout<<"Inverse Matrix a"<<endl;
+//for (i = 1; i <= n; i++)
+//{
+//    for (j = n + 1; j <= n * 2; j++)
+//    {
+//        cout<<a[i][j]<<"    ";
+//    }
+//     cout<<endl;
+//}
+    for (i = 1; i <= n; i++)
+    {
+//    cout<<n<<endl;
+        for (j = 1; j <= n; j++)
+        {
+//    cout<<x[i]<<" "<<a[i][j+n]<<" "<<b[j]<<" "<<endl;
+            xTT[i] = a[i][j+n]*b[j]+xTT[i];
+//    cout<<x[i]<<endl;
+        }
+    }
+//cout<<"  "<<endl;
+//cout<<"Solution is "<<endl;
+    for (i = 1; i <=n; i++)
+    {
+        xT[i-1]=xTT[i];
+    }
+    for (i = 0; i < n; i++)
+    {
+//    cout<<xT[i]<<endl;
+    }
+    cout<<endl;
+    n=numn;
+//return xT;
+}
+
 
 vector<double> gauss(vector< vector<double> > Km_Re)
 {
@@ -1340,7 +1600,7 @@ vector<double> gauss(vector< vector<double> > Km_Re)
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-/*
+
 void print(vector< vector<double> > A)
 {
     int n = A.size();
@@ -1358,4 +1618,21 @@ void print(vector< vector<double> > A)
     }
     cout << endl;
 }
+
+//{
+//    double area = 0.5 * ( //p(t)
+//    xe[0+0*2] * ( xe[1+1*2] - xe[1+2*2] ) +
+//    xe[0+1*2] * ( xe[1+2*2] - xe[1+0*2] ) +
+//    xe[0+2*2] * ( xe[1+0*2] - xe[1+1*2] ) );
+//}
+
+
+/*
+//      2D matrix with variable size;
+        int** ary = new int*[rowCount];
+            for(int i = 0; i < rowCount; ++i){
+                ary[i] = new int[colCount];
+            }
+        ary[1][1]=200;
+        cout<<ary[1][1];
 */
