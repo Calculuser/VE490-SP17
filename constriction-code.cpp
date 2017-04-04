@@ -151,7 +151,7 @@ void get_coefficient(const int nedge, int iband, int inf, int numbDr,
                      CMDArray<int>& eboundary, CMDArray<double>& e0_n,
                      CMDArray<double>& e1_n, CMDArray<double>& Ke,
                      CMDArray<double>& Re) {
-
+    //cout << "iband: " << iband << " inf: " << inf << endl;
     double a_f[nedge];
     int nel[3], nfmax = 4 * ntheta * nphi;
     for (int ie = 0; ie < numcell; ie++){
@@ -666,6 +666,8 @@ void get_coefficient(const int nedge, int iband, int inf, int numbDr,
         }//iedge
         Ke(ie, ie) += 1 / tau_n[iband] * Cc(ie, 2) * weight(inf);
         Re(ie) += e0_n(ie,iband) / tau_n[iband] * Cc(ie, 2) * weight(inf);
+	/*cout << "ie: " << ie << endl;
+	cout << e0_n(ie, iband) << ' ' << tau_n[iband] << ' ' << Cc(ie, 2) << ' ' << weight(inf) << ' ' << ' ' << e0_n(ie, iband) / tau_n[iband] * Cc(ie, 2) * weight(inf) << ' ' << Re(ie) << endl;*/
     }//ie
 }
 
@@ -898,7 +900,7 @@ void interpolation(int nband, CMDArray<double>& Temp,
     }
 }
 
-void get_heat_transfer_flux(CMDArray<int>& eboundary,
+void get_heat_transfer_flux(CMDArray<double>& sweight, CMDArray<int>& eboundary,
                             CMDArray<int>& elemboundary,
                             CMDArray<double>& ee_n, CMDArray<double>& weight,
                             CMDArray<double>& ss, double* R_n, double* vg_n,
@@ -920,139 +922,116 @@ void get_heat_transfer_flux(CMDArray<int>& eboundary,
     }
     int double_width = 15;
 
-///.//////////////////////////////////////////////////////////////////////////
-///.//////////////////////////////////////////////////////////////////////////
+///./////////////////////////////////////////////////////////
 ///.//////// Calculation of Heat Transfer flux //////////.///
 ///. top
-   //  cout <<"q-top-inf"<<endl;
-     for (int iboun = 0; iboun < numbDr; iboun++){
+    for (int iboun = 0; iboun < numbDr; iboun++){
         if (eboundary(iboun + 2 * numbDr) == ntop){
             qleft[iboun] = qright[iboun] = qtop[iboun] = qbot[iboun] = 0;
-
             for (int ibandc = 0; ibandc < nband; ibandc++){
                 for (int infec = 0; infec < nftot; infec++){
-                    // if (sweight[infec][1]>0){
-                    //cout<<"toppp:"<<qtop[iboun]<<endl;
-                    qtop[iboun] += R_n[ibandc] *
-                            ee_n(elemboundary(iboun), infec, ibandc) *
-                            weight(infec)* ss(infec, 1) * vg_n[ibandc];
-///                         cout <<" " <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<eboundary(iboun)<<" " <<eboundary(iboun+numb)<<" "<<eboundary(iboun+2*numb)<<" ee: "<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<
-///                         ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  q:      "<<qtop[iboun]<<endl ;
-                                                            // cout<<"top : "<<elemboundary(iboun)<<" "<<infec<<" "<<ibandc<<" "<<ee_n(elemboundary(iboun),infec,ibandc)<<" "<<endl; //ee_n(elemboundary(iboun),infec,ibandc)*weight(infec)* ss(infec)(0)*vg_n[ibandc]<<" "<<qtop[iboun]<<endl;
-                        if ((ibandc == nband - 1) && (infec == nftot - 1)) {
-			    fout<<setiosflags(ios::scientific)<<setprecision(6);
-                            fout << setw(width_numbDr) << iboun << " " << setw(width_numcell)<<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" "<<setw(width_numcell) <<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width) <<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
-                            ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qtop:    "<<setw(double_width)<<qtop[iboun]<<endl ;
-                            //cout <<" "<<iboun <<" " <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<eboundary(iboun)<<" " <<eboundary(iboun+numb)<<" "<<eboundary(iboun+2*numb)<<" e: "<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<
-                            //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qtop:    "<<qtop[iboun]<<endl ;
-
-
-
-
-                           //cout <<" "<<ss(infec, 0)<< " "<<ee_n(elemboundary(iboun), infec, ibandc) << " "<<endl;
-                               //cout <<"top:    "<<iboun<<" "<<infec<<" "<<" "<<qtop[iboun]<<endl ;
-                                    /* << ee_n(elemboundary(iboun), infec, ibandc) */
-                                            // " " << R_n[ibandc] * ee_n(elemboundary(iboun), infec, ibandc) *
-                                                //     weight(infec) * ss(infec, 0) * vg_n[ibandc] << endl;
-                                                    // }
-                                                    // else{
-                                                    //     qtop[iboun]=qtop[iboun]+C_n[ibandc]/(4*PI)*(Tright-Tref)*sweight[infec][1]*vg_n[ibandc]*L_n/10/(4*PI);
-                                                    //     cout<<"1 en: "<<infec<<" "<<elemboundary[iboun]<<" "<<qtop[iboun]<<" "<<C_n[ibandc]/(4*PI)*(Tright-Tref)*sweight[infec][1]*vg_n[ibandc]*L_n/10/(4*PI)<<endl;
-                                                    // }
-
-                                                    //         cout<<"" ;
-                                                    //         cout<<"1 iboun= "<<iboun<<" ; ibandc= "<<ibandc<<" ;qtop= "<<qtop[iboun]<<endl;
-                	}
-		}
+                    if (sweight(infec,1)>=0){
+                        qtop[iboun] += R_n[ibandc] * ee_n(elemboundary(iboun), infec, ibandc) * weight(infec) * ss(infec, 1) * vg_n[ibandc];
+                        //cout <<"top-s>0"<< setw(width_numbDr) <<infec <<" "<<ee_n(elemboundary(iboun), infec, ibandc)<<" "<<qtop[iboun]<<endl;
+                    }
+                    else if (sweight(infec,1)<0){
+                        int ntheta=1, nphi=1;
+                        for (int nt = 0; nt < ntheta; nt++){
+                            for (int np = 0; np < 4 * nphi; np++){
+                                int nf1 = np + nt * 4 * nphi;
+                                int npref, nfref;
+                                if (infec == nf1) {
+                                    cout<<"";
+                                    int np2 = np + 1;
+                                    int nt2 = nt + 1;
+                                    if (np2 > nphi && np2 <= 2 * nphi){
+                                        npref = 2 * nphi + 1 - np2;
+                                    }
+                                    else {
+                                        npref = 6 * nphi + 1 - np2;
+                                    }
+                                    nfref = npref + (nt2 - 1) * 4 * nphi - 1;
+                                    //cout<<nf1 << " "<<nfref<<endl;
+                                    qtop[iboun] += R_n[ibandc] * ee_n(elemboundary(iboun), nfref, ibandc) * weight(infec) * ss(infec, 1) * vg_n[ibandc];
+                                    //cout <<"top-s<0"<< setw(width_numbDr) <<infec <<" "<<nfref<<" "<<ee_n(elemboundary(iboun), nfref, ibandc)<<" "<<qtop[iboun]<<endl;
+                                }
+                            }
+                        }
+                    }
+                    if ((ibandc == nband - 1) && (infec == nftot - 1)) {
+			   	        fout<<setiosflags(ios::scientific)<<setprecision(5);
+                        fout << setw(width_numbDr) << iboun <<" " << setw(width_numcell) << elemboundary(iboun)<<" "<<infec<<" "<< " eb: " << setw(width_numcell) << eboundary(iboun) << " " << setw(width_numcell) << eboundary(iboun + numb) <<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
+                        ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qtop: "<<setw(double_width)<<qtop[iboun]<<endl ;
+                        //cout << setw(width_numbDr) <<iboun <<" " << setw(width_numcell) <<elemboundary(iboun)<<" "<<infec<<" "<<" eb:"<<setw(width_numcell)<<eboundary(iboun)<<" " <<setw(width_numcell)<<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<"e"<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
+                        //  ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qtop: "<<setw(double_width)<<qtop[iboun]<<endl ;
+			        }
+		        }
             }
         }
-     }
-
-//cout <<"q-bot-inf"<<endl;
+    }
+//cout<<"q-bot-inf"<<endl;
 ///3 bottom
     for (int iboun = 0; iboun < numbDr; iboun++){
         if (eboundary(iboun + 2 * numbDr) == nbottom){
             qleft[iboun] = qright[iboun] = qtop[iboun] = qbot[iboun] = 0;
             for (int ibandc = 0; ibandc < nband; ibandc++){
                 for (int infec = 0; infec < nftot; infec++){
-                    //if (sweight[infec][1]<0){
-                    qbot[iboun] += R_n[ibandc] *
-                            ee_n(elemboundary(iboun), infec, ibandc) *
-                            weight(infec) * ss(infec, 1) * vg_n[ibandc];
-
-                            if ((ibandc == nband - 1) && (infec == nftot - 1)) {
-				fout<<setiosflags(ios::scientific)<<setprecision(5);
-                            fout << setw(width_numbDr) <<iboun <<" " << setw(width_numcell) <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" " <<setw(width_numcell)<<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
-                            ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qbot:    "<<setw(double_width)<<qbot[iboun]<<endl ;
-                            //cout <<" "<<iboun <<" " <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<eboundary(iboun)<<" " <<eboundary(iboun+numb)<<" "<<eboundary(iboun+2*numb)<<" e: "<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<
-                            //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qbot:    "<<qbot[iboun]<<endl ;
-
-
-
-
-                                                    //           cout<<"3    : "<<infec<<" "<<ee_n(elemboundary[iboun],infec,ibandc)<<" "<<elemboundary[iboun]<<" "<<qtop[iboun]<<" "<<ee_n(elemboundary[iboun],infec,ibandc)*sweight[infec][1]*vg_n[ibandc]<<endl;
-                                                    //                    if ((ibandc==nband-1) && (infec== nftot - 1))
-                                                    //                        fout << "bot : " << elemboundary(iboun) << " "
-                                                    //                             << infec << " " << ibandc << " "
-                                                    //                             << ee_n(elemboundary(iboun), infec, ibandc)
-                                                    //                             << " " << qbot[iboun] << " "
-                                                    //                             << R_n[ibandc] * ee_n(elemboundary(iboun), infec, ibandc) *
-                                                    //                                     ss(infec, 0) * vg_n[ibandc]<<endl;
-                                                    //}
-                                                    //else{
-                                                    //   qbot[iboun]=qbot[iboun]+C_n[ibandc]/(4*PI)*(Tright-Tref)*sweight[infec][1]*vg_n[ibandc]*L_n/10/(4*PI);
-                                                    //      cout<<"3 en: "<<iboun <<" "<<infec <<" "<<elemboundary[iboun]<<" "<<qbot[iboun]<<endl;
-                                                    //}
-
-                                                    //      cout<<"" ;
-                                                    //       // cout<<"3 iboun= "<<iboun<<" ; ibandc= "<<ibandc<<" ;qbot= "<<qbot[iboun]<<endl;
-			}                
-		}
+                    if (sweight(infec,1)>=0){
+                        qbot[iboun] += R_n[ibandc] * ee_n(elemboundary(iboun), infec, ibandc) * weight(infec) * ss(infec, 1) * vg_n[ibandc];
+                        //cout <<"bot-s>0"<< setw(width_numbDr) <<infec <<" "<<ee_n(elemboundary(iboun), infec, ibandc)<<" "<<qbot[iboun]<<endl;
+                    }
+                    else if (sweight(infec,1)<0){
+                        int ntheta=1, nphi=1;
+                        for (int nt = 0; nt < ntheta; nt++){
+                            for (int np = 0; np < 4 * nphi; np++){
+                                int nf1 = np + nt * 4 * nphi;
+                                int npref, nfref;
+                                if (infec == nf1) {
+                                    cout<<"";
+                                    int np2 = np + 1;
+                                    int nt2 = nt + 1;
+                                    if (np2 > nphi && np2 <= 2 * nphi){
+                                        npref = 2 * nphi + 1 - np2;
+                                    }
+                                    else {
+                                        npref = 6 * nphi + 1 - np2;
+                                    }
+                                    nfref = npref + (nt2 - 1) * 4 * nphi - 1;
+                                    //  cout<<nf1 << " "<<nfref<<endl;
+                                    qbot[iboun] += R_n[ibandc] * ee_n(elemboundary(iboun), nfref, ibandc) * weight(infec) * ss(infec, 1) * vg_n[ibandc];
+                                    //cout <<"bot-s<0"<< setw(width_numbDr) <<infec <<" "<<nfref<<" "<<ee_n(elemboundary(iboun), nfref, ibandc)<<" "<<qbot[iboun]<<endl;
+                                }
+                            }
+                        }
+                    }
+                    if ((ibandc == nband - 1) && (infec == nftot - 1)) {
+			   	        fout<<setiosflags(ios::scientific)<<setprecision(5);
+                        fout << setw(width_numbDr) <<iboun <<" " << setw(width_numcell) <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" " <<setw(width_numcell)<<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
+                        ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qbot: "<<setw(double_width)<<qbot[iboun]<<endl ;
+                        //cout << setw(width_numbDr) <<iboun <<" " << setw(width_numcell) <<elemboundary(iboun)<<" "<<infec<<" "<<" eb:"<<setw(width_numcell)<<eboundary(iboun)<<" " <<setw(width_numcell)<<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<"e"<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
+                        //  ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qbot: "<<setw(double_width)<<qbot[iboun]<<endl ;
+			        }
+		        }
             }
         }
     }
-  //  cout <<"q-right-inf"<<endl;
+//cout<<"q-right-inf"<<endl;
 ///2 right
         for (int iboun = 0; iboun < numbDr; iboun++){
         if (eboundary(iboun + 2 * numbDr) == nright){
             qleft[iboun] = qright[iboun] = qtop[iboun] = qbot[iboun] = 0;
             for (int ibandc = 0; ibandc < nband; ibandc++){
                 for (int infec = 0; infec < nftot; infec++){
-//                     if (sweight[infec][0]>0){
-                            qright[iboun] += R_n[ibandc] *
-                            ee_n(elemboundary(iboun), infec, ibandc) *
-                            weight(infec) * ss(infec, 0) * vg_n[ibandc];
-
-                            if ((ibandc == nband - 1) && (infec == nftot - 1)) {
-				fout<<setiosflags(ios::scientific)<<setprecision(5);
-                            fout << setw(width_numbDr) << iboun <<" "<< setw(width_numcell) <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" " <<setw(width_numcell)<<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
-                            ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qrig:    "<<setw(double_width)<<qright[iboun]<<endl ;
-                            //cout <<" "<<iboun <<" " <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<eboundary(iboun)<<" " <<eboundary(iboun+numb)<<" "<<eboundary(iboun+2*numb)<<" e: "<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<
-                            //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qrig:    "<<qright[iboun]<<endl ;
-
-
-
-
-                                            //cout<<"righ: "<<elemboundary[iboun]<<" "<<infec<<" "<<ibandc<<" "<<ee_n(elemboundary[iboun],infec,ibandc)<<" "<<qright[iboun]<<" "<<ee_n(elemboundary[iboun],infec,ibandc)*weight[infec]* ss[infec][0]*vg_n[ibandc]<<endl;
-                                    //                    if ((ibandc == nband - 1) && (infec == nftot - 1))
-                                    //                        fout<< "righ: " << elemboundary(iboun)
-                                    //                            << " " << infec << " " << ibandc << " "
-                                    //                            <<        ee_n(elemboundary(iboun), infec, ibandc)
-                                    //                            << " " << qright[iboun] << " "
-                                    //                            <<        R_n[ibandc] * ee_n(elemboundary(iboun), infec, ibandc) *
-                                    //                                      weight(infec) * ss(infec, 0) * vg_n[ibandc]<<endl;
-                                    ////                     }
-                                    //                     else{
-                                    //                        qright[iboun]=qright[iboun]+C_n[ibandc]/(4*PI)*(Tright-Tref)*sweight[infec][0]*vg_n[ibandc];
-                                                        //              cout<<"2  en: "<<infec<<" "<<elemboundary[iboun]<<" "<<qright[iboun]<<endl;
-                                    //                        fout<<"2  en: "<<infec<<" "<<elemboundary[iboun]<<" "<<qright[iboun]<<endl;
-                                    //                     }ee_n(elemboundary(iboun), infec, ibandc) *
-
-                                    //         cout<<"" ;
-                                    //         cout<<"2 iboun= "<<iboun<<" ; ibandc= "<<ibandc<<" ;qright= "<<qright[iboun]<<endl;
-                                    //fout<<"2 iboun= "<<iboun<<" ; ibandc= "<<ibandc<<" ;qright= "<<qright[iboun]<<endl;
+                    //if (sweight[infec][0]>0){
+                    qright[iboun] += R_n[ibandc]*
+                    ee_n(elemboundary(iboun), infec, ibandc)*
+                    weight(infec) * ss(infec, 0) * vg_n[ibandc];
+                    if ((ibandc == nband - 1) && (infec == nftot - 1)) {
+   	            	    fout<<setiosflags(ios::scientific)<<setprecision(5);
+                        fout << setw(width_numbDr) << iboun <<" "<< setw(width_numcell) <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" " <<setw(width_numcell)<<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
+                        ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qrig: "<<setw(double_width)<<qright[iboun]<<endl ;
                 	}
-		}
+		        }
             }
         }
     }
@@ -1063,21 +1042,18 @@ void get_heat_transfer_flux(CMDArray<int>& eboundary,
             qleft[iboun] = qright[iboun] = qtop[iboun] = qbot[iboun] = 0;
             for (int ibandc = 0; ibandc < nband; ibandc++){
                 for (int infec = 0; infec < nftot; infec++){
-        //                     if (sweight[infec][0]<0){
-                    qleft[iboun] += R_n[ibandc] *
-                            ee_n(elemboundary(iboun), infec, ibandc) *
-                            weight(infec) * ss(infec, 0) * vg_n[ibandc];
-                                //           //cout<<"4  ex: "<<infec<<" "<<ee_n(elemboundary[iboun],infec,ibandc)<<" "<<elemboundary[iboun]<<" "<<qtop[iboun]<<" "<<ee_n(elemboundary[iboun],infec,ibandc)*sweight[infec][1]*vg_n[ibandc]<<endl;
-                     if ((ibandc == nband - 1) && (infec == nftot - 1))
-                            if ((ibandc == nband - 1) && (infec == nftot - 1)) {
-				fout<<setiosflags(ios::scientific)<<setprecision(5);
+                    //if (sweight[infec][0]<0){
+                    qleft[iboun] += R_n[ibandc] * ee_n(elemboundary(iboun), infec, ibandc) * weight(infec) * ss(infec, 0) * vg_n[ibandc];
+                    if ((ibandc == nband - 1) && (infec == nftot - 1)){
+                        if ((ibandc == nband - 1) && (infec == nftot - 1)) {
+  				            fout<<setiosflags(ios::scientific)<<setprecision(5);
                             fout << setw(width_numbDr) << iboun <<" " << setw(width_numcell) << elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" "<<setw(width_numcell) <<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
-                            ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<endl ;
+                            ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef: "<<setw(double_width)<<qleft[iboun]<<endl ;
                             //cout <<" "<<iboun <<" " <<elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<eboundary(iboun)<<" " <<eboundary(iboun+numb)<<" "<<eboundary(iboun+2*numb)<<" e: "<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<
-                           // ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<qleft[iboun]<<endl ;
-
-			}                
-		}
+                            // ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<qleft[iboun]<<endl ;
+                        }
+		            }
+                }
             }
         }
     }
@@ -1390,7 +1366,7 @@ int main (void) {
                 fout_ret << ee_n(numcell, nftot, 0) << ' ';
             fout_ret << endl;
         }*/
-        get_heat_transfer_flux(eboundary, elemboundary, ee_n, weight, ss, R_n, vg_n,
+        get_heat_transfer_flux(sweight, eboundary, elemboundary, ee_n, weight, ss, R_n, vg_n,
                                nband, nftot, numbDr, ntop, nbottom, nleft, nright, fout_ret);
         fout_ret.close();
         fout_node.close();
