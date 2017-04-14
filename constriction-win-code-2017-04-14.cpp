@@ -16,7 +16,6 @@
 #include <cmath>
 #include <ctime>
 #include <cstdlib>
-#include <petscksp.h>
 #include "mdarray.h"
 using namespace std;
 
@@ -494,76 +493,18 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
 
 ///***
 vector<double> solve_matrix (CMDArray<double>& Ke, CMDArray<double>& Re) {
-    //ofstream fout("solution.out");
-    int* nnz = new int[numcell], count;
-    for (int i = 0; i < numcell; i++) {
-        count = 0;
-        for (int j = 0; j < numcell; j++)
-            if (Ke(i, j) != 0)
-                count++;
-        *(nnz + i) = count;
+    CMDArray<double> Km_active(numcell * numcell);
+    CMDArray<double> Re_active(numcell);
+    vector<double> line(numcell + 1,0);
+    vector< vector<double> > Km_Re(numcell, line);
+    for (int i1 = 0; i1 < numcell; i1++) {
+        for (int i2 = 0; i2 < numcell; i2++)
+            Km_Re[i1][i2] = Ke(i1, i2);
+            Km_Re[i1][numcell] = Re(i1);
     }
-    //for (int i = 0; i < numcell; i++){
-    	//for (int j = 0; j < numcell; j++)
-             //fout << Ke(i, j) << ' ';
-        //fout << Re(i) << endl;
-    //}
-    static char help[] = "Solving matrix.\n\n";
-    const double offset = 1e16;
-    PetscInitialize(NULL, NULL, (char*)0, help);
-    Mat	 A;        //matrix definition
-    Vec xxx, bbb;   //vector definition
-    PetscScalar  v, u, yyy[numcell]; //double in c++
-    PetscInt iii, jjj, one, ix[numcell]; //integer in c++
-    KSP ksp;   //solver of matrix
-    MatCreateSeqAIJ(PETSC_COMM_SELF, numcell, numcell, 3, nnz, &A);
-    //numm=numcell; 3 maximun non zero ; nnz : number of non zero in each row
-    for (iii = 0;iii < numcell; iii++){
-        for (jjj = 0; jjj < numcell; jjj++){
-            if (Ke(iii, jjj) != 0) {
-                v = Ke(iii, jjj) * offset; //make bigger digits
-                MatSetValues(A, 1, &iii, 1, &jjj, &v, ADD_VALUES);
-                // copy Ke to Petsc; 1 1 for 1 elements in matrix
-            }
-        }
-    }
-    MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
-    //MatView(A,PETSC_VIEWER_STDOUT_WORLD);//print the matrix
-    VecCreate(PETSC_COMM_WORLD, &bbb); // create bbb
-    VecSetSizes(bbb, PETSC_DECIDE, numcell); //set the size for bbb (right hand side value)
-    VecSetFromOptions(bbb);
-    VecDuplicate(bbb, &xxx); // create another solution vector (xxx)
-    for (iii = 0; iii < numcell; iii++){
-        u = Re(iii) * offset;// make bigger digits
-        VecSetValues(bbb, 1, &iii, &u, ADD_VALUES);//set value for bbb just one value in each time
-    }
-    //VecView(bbb,PETSC_VIEWER_STDOUT_WORLD);//print vector
-///create solver of the system
-    KSPCreate(PETSC_COMM_WORLD, &ksp);
-    KSPSetOperators(ksp, A, A); //format of petsc ;
-    KSPSetFromOptions(ksp);
-
-    KSPSolve(ksp,bbb,xxx); ///solve the matrix
-    //VecView(xxx,PETSC_VIEWER_STDOUT_WORLD); //the results is xxx
-
-    one = numcell;
-    vector<double> x(numcell);
-
-    for (iii = 0; iii < numcell; iii++)
-        ix[iii]=iii;
-
-    VecGetValues(xxx, one, ix, yyy);
-    // send value from petsc to petsc another format ( petsc scaler : yyy) (xxx:vector . can not do operation on that)
-    for (iii = 0; iii < numcell; iii++)
-        x[iii]=yyy[iii];
-    delete[] nnz;
-    VecDestroy(&xxx);
-    VecDestroy(&bbb);
-    MatDestroy(&A);
-    KSPDestroy(&ksp);
+    vector<double> x(numcell) ;
+    x = gauss(Km_Re);
     return x;
-/// finished petsc 
 }
 
 ///***
@@ -585,7 +526,7 @@ void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>
         e0(ic) = e0(ic) / (4 * PI);
     }//ic
     for (int i2 = 0; i2 < numcell; i2++) {
-	fout << setprecision(6) << setiosflags(ios::left);
+	fout << setprecision(6);
         fout << setw(width_numcell) << i2 << ' ' << setw(double_width) << Cc(i2, 0) << ' '
 	     << setw(double_width) << Cc(i2, 1) << ' ' << setw(7) << Temp_n(i2,iband) << endl;
     }
@@ -633,7 +574,7 @@ void interpolation(int nband, CMDArray<double>& Temp, CMDArray<double>& Temnode_
                 Temnode_n(inode) += Temp(elmnod(inode, ino))* (1.0 / (sqrt((pow((Cc(elmnod(inode, ino), 0)
                 - p(inode)), 2)+ pow((Cc(elmnod(inode, ino), 1)-p(inode + numnode)), 2)))))/node_r_m1T(inode);
             }
- 	    fout << setprecision(6) << setiosflags(ios::left);
+ 	        fout << setprecision(6);
             fout << setw(width_numnode) << inode << ' ' << setw(double_width) <<p(inode) << " "
 		    << setw(double_width) << p(inode + numnode)
             << " " << setw(7) <<Temnode_n(inode) << endl;
@@ -654,7 +595,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
     double *qtop = new double[numb];
     double *qbot = new double[numb];
     //double *qleftsum = new double[numb];
-    int width_numbDr = 1, num_temp = numbDr;
+    int width_numbDr = 0, num_temp = numbDr;
     while (num_temp > 0) {
     	num_temp /= 10;
 	width_numbDr ++;
@@ -664,14 +605,13 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
     	num_temp /= 10;
 	width_numcell ++;
     }
-    int double_width = 15;
+    //int double_width = 15;
 
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 ///                                   Calculation of Heat Transfer flux
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
     double qleftsum=0,  qrightsum=0;
     int counterr=0,counterl=0;
-    fout <<setiosflags(ios::scientific)<<setiosflags(ios::left)<<setprecision(5);
     for (int iboun = 0; iboun < numbDr; iboun++){
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 /// Heat flux                                            Left
@@ -690,9 +630,8 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                     if ((ibandc == nband - 1) && (infec == nftot - 1)){
                         qleftsum=qleftsum+qleft[iboun];
                         counterl=counterl+1;
-                        fout<<"qleft:  "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qleft[iboun]<<endl;
-			//fout <<setiosflags(ios::scientific)<<setiosflags(ios::left)<<setprecision(5);
-                        fout2<<"qleft2: "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qleft2[iboun]<<endl;
+                        fout<<"qleft:  "<<iboun<<" "<<qleft[iboun]<<endl;
+                        fout2<<"qleft2: "<<iboun<<" "<<qleft2[iboun]<<endl;
                         //fout <<setiosflags(ios::scientific)<<setprecision(5);
                         //fout << setw(width_numbDr) << iboun <<" " << setw(width_numcell) << elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" "<<setw(width_numcell) <<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
                         //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<endl ;
@@ -719,9 +658,8 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                     if ((ibandc == nband - 1) && (infec == nftot - 1)){
                         qrightsum=qrightsum+qright[iboun];
                         counterr=counterr+1;
-                        fout<<"qright: "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qright[iboun]<<endl;
-			//fout <<setiosflags(ios::scientific)<<setiosflags(ios::left)<<setprecision(5);
-                        fout2<<"qright2:"<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qright2[iboun]<<endl;
+                        fout<<"qright: "<<iboun<<" "<<qright[iboun]<<endl;
+                        fout2<<"qright2:"<<iboun<<" "<<qright2[iboun]<<endl;
                         //fout <<setiosflags(ios::scientific)<<setprecision(5);
                         //fout << setw(width_numbDr) << iboun <<" " << setw(width_numcell) << elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" "<<setw(width_numcell) <<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
                         //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<endl ;
@@ -815,9 +753,9 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
     delete[] qbot;
     delete[] qleft;
     delete[] qright;
-    fout<<"qleftsum:   "<< qleftsum/counterl<<endl;
-    fout<<"qrightsum:  "<< qrightsum/counterr<<endl;
-    fout<<"Resistance: "<< (Tleft-Tright)/(((qleftsum/counterl)+(qrightsum/counterr))/2)<<endl;
+    fout<<"qleftsum :  "<< qleftsum/counterl<<endl;
+    fout<<"qrightsum : "<< qrightsum/counterr<<endl;
+    fout<<"Resistance :  "<< (Tleft-Tright)/(((qleftsum/counterl)+(qrightsum/counterr))/2)<<endl;
 
 }
 
@@ -867,7 +805,6 @@ int main (void) {
     // Non-gray BTE - Different Bands.
     getline(fin_const, str);
     fin_const >> nband >> new_line;
-    //cout << nband << endl;
     double *tau_n = new double[nband];
     double *vg_n = new double[nband];
     double *Kn_n = new double[nband];
