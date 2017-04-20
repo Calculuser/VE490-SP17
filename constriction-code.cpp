@@ -244,10 +244,10 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                     int nf1 = np + nt * 4 * nphi;
                                     int npref, nfref;
                                     if (inf == nf1) {
-                                        cout<<"";
+                                        //cout<<"";
                                         if (swn >= 0){       //         outgoing
                                             Ke(ie, ie) += a_f[iedge];
-                                            cout<<"";
+                                            //cout<<"";
                                         }
                                         else if (swn < 0) {  //         incoming
                                             int np2 = np + 1;
@@ -297,10 +297,10 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                     int nf1 = np + nt * 4 * nphi;
                                     int npref, nfref;
                                     if (inf == nf1) {
-                                        cout<<"";
+                                        //cout<<"";
                                         if (swn >= 0){     ///  outgoing
                                             Ke(ie, ie) += a_f[iedge];
-                                            cout<<"";
+                                            //cout<<"";
                                         }
                                         else if (swn < 0) {///  incoming
                                             int np2 = np + 1;
@@ -400,7 +400,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 /// DIFFUSIVE BOUNDARY
                         else if (eboundary(ib + numbDr * 2) == nlefti) {
-                            cout<<"";
+                            //cout<<"";
                             double einsum = 0.0;
                             for (int nft = 0; nft < nfmax; nft++){
                                 swn = ss(nft, 0) * norm[0] + ss(nft, 1) * norm[1];
@@ -442,10 +442,10 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                     int nf1 = np + nt * 4 * nphi;
                                     int npref, nfref;
                                     if (inf == nf1) {
-                                        cout<<"";
+                                        //cout<<"";
                                         if (swn >= 0){     ///  outgoing
                                             Ke(ie, ie) += a_f[iedge];
-                                            cout<<"";
+                                            //cout<<"";
                                         }
                                         else if (swn < 0) {///  incoming
                                             int np2 = np + 1;
@@ -489,7 +489,24 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
         }//iedge
         Ke(ie, ie) += 1 / tau_n[iband] * Cc(ie, 2) * weight(inf);
         Re(ie) += e0_n(ie,iband) / tau_n[iband] * Cc(ie, 2) * weight(inf);
+	/*	
+	if (iter == 1) {
+	cout << "Re: " << endl;	
+	cout << "iter: " << iter << " iband: " << iband << " inf: " << inf << ' ' << "ie: " << ie << endl;
+    	for (int i = 0; i < numcell; i++)
+	    cout << Re(i) << ' ';
+	cout << endl;
+	}*/
+	/*
+	if (iband == 0) {
+	cout << "iter: " << iter << " iband: " << iband << " inf: " << inf << ' ' << "ie: " << ie << endl;
+	cout << "e0_n:" << endl;
+	cout << e0_n(ie,iband) << endl;
+	}*/
     }//ie
+    //cout << "Re: iter: " << iter << " iband: " << iband << " inf: " << inf + 1 << endl;
+    //for (int i = 0; i < numcell; i++)
+	//cout << Re(i) << endl;
 }
 
 ///***
@@ -569,7 +586,6 @@ vector<double> solve_matrix (CMDArray<double>& Ke, CMDArray<double>& Re) {
 ///***
 void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>& e0,
     CMDArray<double>& ee_n, CMDArray<double>& weight, CMDArray<double>& Temp_n, double* C_n, double Tref, ofstream& fout) {
-    Temp_n.set_zero();
     e0.set_zero();
     int width_numcell = 0, num_temp = numcell;
     while (num_temp > 0) {
@@ -577,17 +593,20 @@ void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>
 	    width_numcell ++;
     }
     int double_width = 12;
+    //cout << "ic: " << "e0: " << "Temp_n" << endl;
     for (int ic = 0; ic < numcell; ic++){
         for (int iinf = 0; iinf < nftot; iinf++){
             e0(ic) += ee_n(ic, iinf, iband) * weight(iinf);
          }
         Temp_n(ic, iband) = e0(ic) / C_n[iband] + Tref;
         e0(ic) = e0(ic) / (4 * PI);
+	//if (iband == 0)
+	    // << ic << ' ' << e0(ic) << ' ' << Temp_n(ic, iband) << endl;
     }//ic
     for (int i2 = 0; i2 < numcell; i2++) {
 	fout << setprecision(6) << setiosflags(ios::left);
         fout << setw(width_numcell) << i2 << ' ' << setw(double_width) << Cc(i2, 0) << ' '
-	     << setw(double_width) << Cc(i2, 1) << ' ' << setw(7) << Temp_n(i2,iband) << endl;
+	     << setw(double_width) << Cc(i2, 1) << ' ' << setw(7) << Temp_n(i2,iband) << "\n";
     }
 }
 
@@ -603,6 +622,7 @@ void recover_temp(CMDArray<double>& e0_n,
             Rnn += R_n[ibnd1];
         }
         Temp(icc) = RRn / Rnn;
+	//cout << icc << ' ' << RRn << ' ' << Rnn << endl;
     }//icc
     for (int icc2 = 0; icc2 < numcell; icc2++)
         for (int iibnd = 0; iibnd < nband; iibnd++)
@@ -636,7 +656,7 @@ void interpolation(int nband, CMDArray<double>& Temp, CMDArray<double>& Temnode_
  	    fout << setprecision(6) << setiosflags(ios::left);
             fout << setw(width_numnode) << inode << ' ' << setw(double_width) <<p(inode) << " "
 		    << setw(double_width) << p(inode + numnode)
-            << " " << setw(7) <<Temnode_n(inode) << endl;
+            << " " << setw(7) <<Temnode_n(inode) << "\n";
         }
     }
 }
@@ -690,9 +710,9 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                     if ((ibandc == nband - 1) && (infec == nftot - 1)){
                         qleftsum=qleftsum+qleft[iboun];
                         counterl=counterl+1;
-                        fout<<"qleft:  "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qleft[iboun]<<endl;
+                        fout<<"qleft:  "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qleft[iboun]<<"\n";
 			//fout <<setiosflags(ios::scientific)<<setiosflags(ios::left)<<setprecision(5);
-                        fout2<<"qleft2: "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qleft2[iboun]<<endl;
+                        fout2<<"qleft2: "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qleft2[iboun]<<"\n";
                         //fout <<setiosflags(ios::scientific)<<setprecision(5);
                         //fout << setw(width_numbDr) << iboun <<" " << setw(width_numcell) << elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" "<<setw(width_numcell) <<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
                         //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<endl ;
@@ -719,9 +739,9 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                     if ((ibandc == nband - 1) && (infec == nftot - 1)){
                         qrightsum=qrightsum+qright[iboun];
                         counterr=counterr+1;
-                        fout<<"qright: "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qright[iboun]<<endl;
+                        fout<<"qright: "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qright[iboun]<<"\n";
 			//fout <<setiosflags(ios::scientific)<<setiosflags(ios::left)<<setprecision(5);
-                        fout2<<"qright2:"<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qright2[iboun]<<endl;
+                        fout2<<"qright2:"<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qright2[iboun]<<"\n";
                         //fout <<setiosflags(ios::scientific)<<setprecision(5);
                         //fout << setw(width_numbDr) << iboun <<" " << setw(width_numcell) << elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" "<<setw(width_numcell) <<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
                         //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<endl ;
@@ -747,7 +767,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                                 int nf1 = np + nt * 4 * nphi;
                                 int npref, nfref;
                                 if (infec == nf1) {
-                                    cout<<"";
+                                    //cout<<"";
                                     int np2 = np + 1;
                                     int nt2 = nt + 1;
                                     if (np2 > nphi && np2 <= 2 * nphi){
@@ -787,7 +807,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                                 int nf1 = np + nt * 4 * nphi;
                                 int npref, nfref;
                                 if (infec == nf1) {
-                                    cout<<"";
+                                    //cout<<"";
                                     int np2 = np + 1;
                                     int nt2 = nt + 1;
                                     if (np2 > nphi && np2 <= 2 * nphi){
@@ -815,9 +835,9 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
     delete[] qbot;
     delete[] qleft;
     delete[] qright;
-    fout<<"qleftsum:   "<< qleftsum/counterl<<endl;
-    fout<<"qrightsum:  "<< qrightsum/counterr<<endl;
-    fout<<"Resistance: "<< (Tleft-Tright)/(((qleftsum/counterl)+(qrightsum/counterr))/2)<<endl;
+    fout<<"qleftsum:   "<< qleftsum/counterl<<"\n";
+    fout<<"qrightsum:  "<< qrightsum/counterr<<"\n";
+    fout<<"Resistance: "<< (Tleft-Tright)/(((qleftsum/counterl)+(qrightsum/counterr))/2)<<"\n";
 
 }
 
@@ -1041,7 +1061,7 @@ int main (void) {
     ee_n.set_zero();
     CMDArray<double> Temnode(numnode), Temnode_n(numnode);
     const int nedge = 3;
-    cout << "Ncell: " << numcell << " Kn: " << Kn_n[0] << " nt: " << ntheta << endl;
+    cout << "Ncell: " << numcell << " Kn: " << Kn_n[0] << " nt: " << ntheta << "\n";
     clock_t t_start = clock();
     // Iteration
     for (int iter=0; iter < max_iter; iter++){
@@ -1054,7 +1074,15 @@ int main (void) {
             for (int infe = 0; infe < nftot; infe++)
                 for (int inn = 0; inn < numcell; inn++)
                     e1_n(inn,infe,ibnde) = ee_n(inn,infe,ibnde);
-        ee_n.set_zero();
+	/*
+	cout << "e1_n: " << "iter: " << iter << endl;;
+ 	for (int infe = 0; infe < nftot; infe++) {
+            for (int inn = 0; inn < numcell; inn++)
+                cout << e1_n(inn,infe, 0) << ' ';
+	    cout << endl;
+	}
+	*/
+ 	ee_n.set_zero();
         e2_n.set_zero();
         // solve for each band.
         for (int iband = 0; iband < nband; iband++){
@@ -1067,13 +1095,28 @@ int main (void) {
                                 nrighti1, p, t, sweight, ss, weight, Cc, eboundary,
                                 e0_n, e1_n, Ke, Re);
                 vector<double> sol = solve_matrix(Ke, Re);
+		/*
+		if (iband == nband - 1) {
+		    cout << "Re: " << endl;
+		    for (int i = 0; i < numcell; i++)
+			cout << Re(i) << ' ';		
+		cout << endl;
+		}
+		*/		
                 for (int id = 0; id < numcell; id++) {
                     ee_n(id, inf, iband) = sol[id];
                     e2_n(id, inf, iband) = sol[id];
+		    //cout << inf << ' ' << sol[id] << endl;
                 }
             }
             get_cell_temp(iband, nftot, Cc, e0, ee_n, weight, Temp_n, C_n, Tref, fout_cell);
         }//iband
+	/*
+	cout << "Temp_n:" << endl;
+	for (int i = 0; i < numcell; i++)
+	    cout << Temp_n(i, 0) << ' ';
+	cout << endl;
+	*/
         recover_temp(e0_n, Temp_n, Temp, nband, R_n, C_n, Tref);
         interpolation(nband, Temp, Temnode_n, node_r_m1T, elmnod, nelemnode, Cc, p, t, fout_node);
         get_heat_transfer_flux(C_n,Tleft,Tright,Tref,sweight, eboundary, elemboundary, ee_n, weight, ss, R_n, vg_n,
@@ -1083,12 +1126,12 @@ int main (void) {
         fout_node.close();
         fout_cell.close();
         double error = get_error(nband, nftot, e1_n, e2_n);
-        cout << "Iter,Err_all = " << iter << " " << error << endl;
+        cout << "Iter,Err_all = " << iter << " " << error << "\n";
         if (check_convergence(error, nftot))
             break;
     }//iter
     clock_t t_end = clock();
-    cout << "Time used: " << (double)(t_end - t_start) / CLOCKS_PER_SEC << endl;
+    cout << "Time used: " << (double)(t_end - t_start) / CLOCKS_PER_SEC << "\n";
     delete[] tau_n;
     delete[] vg_n;
     delete[] Kn_n;
@@ -1097,55 +1140,3 @@ int main (void) {
     return 0;
 }
 
-///***
-vector<double> gauss(vector< vector<double> > Km_Re)
-{
-    int n = Km_Re.size();
-    for (int i=0; i<n; i++)
-    {
-        // Search for maximum in this column
-        double maxEl = fabs(Km_Re[i][i]);
-        int maxRow = i;
-        for (int k=i+1; k<n; k++)
-        {
-            if (fabs(Km_Re[k][i]) > maxEl)
-            {
-                maxEl = fabs(Km_Re[k][i]);
-                maxRow = k;
-            }
-        }
-        // Swap maximum row with current row (column by column)
-        for (int k=i; k<n+1; k++)
-        {
-            double tmp = Km_Re[maxRow][k];
-            Km_Re[maxRow][k] = Km_Re[i][k];
-            Km_Re[i][k] = tmp;
-        }
-        // Make all rows below this one 0 in current column
-        for (int k=i+1; k<n; k++)
-        {
-            double c = -Km_Re[k][i]/Km_Re[i][i];
-            for (int j=i; j<n+1; j++)
-            {
-                if (i==j)
-                {
-                    Km_Re[k][j] = 0;
-                }
-                else
-                {
-                    Km_Re[k][j] += c * Km_Re[i][j];
-                }
-            }
-        }
-    }
-    vector<double> x(n); // Solve equation Ax=b for an upper triangular matrix A
-    for (int i=n-1; i>=0; i--)
-    {
-        x[i] = Km_Re[i][n]/Km_Re[i][i];
-        for (int k=i-1; k>=0; k--)
-        {
-            Km_Re[k][n] -= Km_Re[k][i] * x[i];
-        }
-    }
-    return x;
-}
