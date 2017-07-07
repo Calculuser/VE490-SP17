@@ -4,8 +4,9 @@
 ///
 ///                      Non-gray BTE-FVM-Heat Transfer Cell_Centered Triangular Cells
 ///     Constriction Adiabatic (Diffusive,Specular) and Constant Temperature Bc's ; PETSc Read data from the cohll
-///
-/// $$$ 2017-04-12 $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+///     modify the intial condition of e0
+///     read initial data from ResultTempCell.dat (if not exist then from inputtemp.dat) but with some problems.
+/// $$$ 2017-06-20 $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 #include <iostream>
 #include <iomanip>
@@ -16,27 +17,29 @@
 #include <cmath>
 #include <ctime>
 #include <cstdlib>
-#include <petscksp.h>
+#ifdef __linux__ // When run in linux, this part is needed.
+    #include <petscksp.h>
+#endif
 #include "mdarray.h"
 using namespace std;
 
-///***
-vector<double> gauss(vector< vector<double> > A)  ;
 int numb, numnode, numcell;
 const double PI = 4.0 * atan(1.0);
 const double WFACTOR = 2;
+
+// find the label boundary which needs to be omitted 
 bool find_omit(int x, const set<int>& omit) {
     return (omit.find(x) != omit.end());
 }
 
-///***
+// a helper function of union
 int Find (int x, int *parent) {
     if (*(parent + x) != x)
        *(parent + x) = Find(*(parent + x), parent);
     return *(parent + x);
 }
 
-///***
+// union the same boundary which may have different label
 void Union (int x, int y, int *parent) {
     int a, b;
     a = Find(x, parent);
@@ -46,7 +49,7 @@ void Union (int x, int y, int *parent) {
     else *(parent + a) = b;
 }
 
-///***
+// get direction of vectors
 void get_direction(int nftot, int ntheta, int nphi, double WFACTOR,
     CMDArray<double>& sweight, CMDArray<double>& ss, CMDArray<double>& weight) {
     double dtheta= 0.5 * PI / ntheta;
@@ -71,7 +74,8 @@ void get_direction(int nftot, int ntheta, int nphi, double WFACTOR,
         }
     }
 }
-///***
+
+// find the interpolation elements and calculate the center of cells
 void find_interpolation_element (CMDArray<int>& elmnod, CMDArray<int>& nelemnode,
     CMDArray<double>& node_r_m1T,CMDArray<double>& Cc,
     CMDArray<double>& p, CMDArray<int>& t) {
@@ -96,7 +100,8 @@ void find_interpolation_element (CMDArray<int>& elmnod, CMDArray<int>& nelemnode
         }
     }
 }
-///***
+
+// get the order number of boundary elements
 void get_boundary_element(CMDArray<int>& elemboundary,
     CMDArray<int>& eboundary,CMDArray<int>& t, int numbDr) {
     for (int nodebndry=0; nodebndry < numbDr; nodebndry++){
@@ -114,20 +119,118 @@ void get_boundary_element(CMDArray<int>& elemboundary,
     }
 }
 
-///***
-void initialize_e0 (CMDArray<double>& e0, CMDArray<double>& Temp, double Tleft, double Tright) {
-    for (int i = 0; i < numcell; i++){
-        Temp(i) = Tleft;
-        e0(i) = 0;
+// initialize e0
+void initialize_e0 (CMDArray<double>& ee_n, CMDArray<double>& e0_n, CMDArray<double>& Temp,
+		    CMDArray<double>& Temp_n, CMDArray<double>& Cc, CMDArray<double>& weight,
+		    double* C_n, double Tref, double L_n, int nband, int nftot, bool flag) {
+    // get in the data.
+    ifstream fin_temp, fin_e0;
+    //ofstream fout("test_ee.out"), fout1("test_e0.dat");
+    double* node_temp;
+    int num = numcell;
+    //cout << num << endl;
+    if (flag)
+    	fin_temp.open("eeinputfilec.dat", ifstream::in);
+    else fin_temp.open("eeinputfilew.dat", ifstream::in);
+    if (fin_temp.good()) {
+       //cout << "Read_ee" << endl;
+       for (int i = 0; i < nband; i++)
+	   for (int j = 0; j < nftot; j++) {
+               for (int k = 0; k < numcell; k++) {
+                   fin_temp >> setprecision(12) >> ee_n(k, j, i);
+               	   //fout << setprecision(12) << ee_n(k, j, i) << ' ';
+               }
+               //fout << "\n";
+           }
+       if (flag)
+    	  fin_e0.open("e0inputfilec.dat", ifstream::in);
+       else fin_e0.open("e0inputfilew.dat", ifstream::in);
+       for (int i = 0; i < nband; i++) {
+	   for (int j = 0; j < numcell; j++) {
+		fin_e0 >> setprecision(12) >> e0_n(j, i);
+		//fout1 << setprecision(12) << e0_n(j, i) << ' ';
+           }
+	   //fout1 << "\n";
+       }
+       fin_e0.close();
     }
-    Temp(1) = Tright; Temp(4) = Tright; Temp(5) = Tright;
-    Temp(2) = Tright; Temp(9) = Tright; Temp(8) = Tright;
-    Temp(6) = Tright; Temp(7) = Tright;
+    else {
+        //cout << "no ee" << endl;
+        if (flag)
+    	    fin_temp.open("ResultTempCell-constriction.dat", ifstream::in);
+        else fin_temp.open("ResultTempCell-without.dat", ifstream::in);
+    
+        if (fin_temp.good()) {
+	    node_temp = new double[num * 3];
+	    int dump;
+	    for (int i = 0; i < num; i++)
+	        fin_temp >> dump >> node_temp[i] >> node_temp[i + num] >> node_temp[i + num * 2]; 
+        }
+        else {
+            if (flag)
+	    	fin_temp.open("inputtempc.dat", ifstream::in);
+            else fin_temp.open("inputtempw.dat", ifstream::in);
+            string str, num_str;
+            stringstream ss;
+            for (int i = 1; i <= 4; i++)
+	        getline(fin_temp, str);
+            getline(fin_temp, str);
+            ss.str(str);
+            for (int i = 1; i <= 3; i++)
+	        ss >> num_str;
+            num = atoi(num_str.c_str());
+            for (int i = 1; i <= 4; i++)
+	        getline(fin_temp, str);
+
+            node_temp = new double[num * 3];
+            for (int i = 0; i < num; i++) {
+	        ss.clear();
+	        getline(fin_temp, str);
+	        ss.str(str);
+	        for (int j = 0; j < 3; j++) {
+	            ss >> num_str;
+	            node_temp[j * num + i] = atof(num_str.c_str());
+	        }
+	        //cout << i << ' ' << node_temp[i] << ' ' << node_temp[num + i] << ' ' << node_temp[2 * num + i] << endl;
+    	    }
+        }
+        //for (int i = 0; i < num; i++)
+	     //cout << node_temp[i] << ' ' << node_temp[i + num] << ' ' << node_temp[i + num * 2] << endl;
+        double sum = 0.0;
+        for (int k = 0; k < nftot; k++)
+	    sum += weight(k);
+    
+        for (int i = 0; i < numcell; i++){
+	    double temp_min = 100.00, dist = 0.0;
+	    int min_index = 0;
+	    for (int j = 0; j < num; j++){
+	        dist = sqrt((node_temp[j] - Cc(i, 0) / L_n) * (node_temp[j] - Cc(i, 0) / L_n)
+			    + (node_temp[j + num] - Cc(i, 1) / L_n) * (node_temp[j + num] - Cc(i, 1) / L_n));
+	        if(dist < temp_min){
+		    temp_min = dist;
+		    min_index = j;
+	        }
+	    }
+	    Temp(i) = node_temp[min_index + num * 2];
+	    //cout << i << ' ' << temp_min << ' ' << min_index << ' ' << Temp(i) << endl;
+	    for (int j = 0; j < nband; j++) {
+	        Temp_n(i, j) = Temp(i);
+	        e0_n(i, j) = C_n[j] * (Temp(i) - Tref);
+	        double temp_e0 = e0_n(i, j) / sum;
+	        e0_n(i, j) /= (4 * PI);
+	        for (int k = 0; k < nftot; k++)
+		    ee_n(i, k, j) = temp_e0;
+	    }
+        }
+        delete[] node_temp;
+    }
+    fin_temp.close();
+    //cout << "AFTER DELETE PASS" << endl;
 }
 
-///***
+/// get the coefficient of matrix A and vector B in linear system Ax=b
 void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
-    double xe[], double* vg_n, double* C_n, double* tau_n, double Tleft, double Tright, double Tref,double L_n,
+    double xe[], double* mfp_n, double* C_n, double Tleft, double Tright, double Tref,double L_n,
     int ntheta, int nphi, int ntop, int ntopi, int nbottom, int nbottomi, int nleft,
     int nlefti, int nright, int nrighti, int nrighti1, CMDArray<double>& p, CMDArray<int>& t,
     CMDArray<double>& sweight, CMDArray<double>& ss, CMDArray<double>& weight, CMDArray<double>& Cc,
@@ -194,7 +297,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$/// find e0 and temperature
             if (ineighb){ //means neighbor cell exists and it is not boundary
                 swn = (ss(inf, 0) * norm[0] + ss(inf, 1) * norm[1]);
-                a_f[iedge] = vg_n[iband] *
+                a_f[iedge] = mfp_n[iband] *
                 (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                 if (swn>=0)
                     Ke(ie, ie) += a_f[iedge];
@@ -211,7 +314,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                         neledge[iedge][1] == eboundary(ib)))){
                         swn = (ss(inf, 0) * norm[0] + ss(inf, 1) * norm[1]);
                         ///! outgoing
-                        a_f[iedge] = vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * fabs(leng_edge);
+                        a_f[iedge] = mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * fabs(leng_edge);
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 /// Diffusive-Specular boundary                           Top
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
@@ -232,7 +335,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                         Ke(ie, ie) += a_f[iedge];
                                     }
                                     else if (swn < 0) {   ///   incoming
-                                        Re(ie) -= einsum * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                        Re(ie) -= einsum * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                                     }
                                 }
                             }
@@ -244,10 +347,10 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                     int nf1 = np + nt * 4 * nphi;
                                     int npref, nfref;
                                     if (inf == nf1) {
-                                        //cout<<"";
+                                        cout<<"";
                                         if (swn >= 0){       //         outgoing
                                             Ke(ie, ie) += a_f[iedge];
-                                            //cout<<"";
+                                            cout<<"";
                                         }
                                         else if (swn < 0) {  //         incoming
                                             int np2 = np + 1;
@@ -259,7 +362,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                                 npref = 6 * nphi + 1 - np2;
                                             }
                                             nfref = npref + (nt2 - 1) * 4 * nphi - 1;
-                                            Re(ie) -= e1_n(ie, nfref, iband) * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                            Re(ie) -= e1_n(ie, nfref, iband) * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                                         }
                                     }
                                 }
@@ -285,7 +388,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                         Ke(ie, ie) += a_f[iedge];
                                     }
                                     else if (swn<0) {      ///  incoming
-                                        Re(ie) -= einsum*vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                        Re(ie) -= einsum * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                                     }
                                 }
                             }
@@ -297,10 +400,10 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                     int nf1 = np + nt * 4 * nphi;
                                     int npref, nfref;
                                     if (inf == nf1) {
-                                        //cout<<"";
+                                        cout<<"";
                                         if (swn >= 0){     ///  outgoing
                                             Ke(ie, ie) += a_f[iedge];
-                                            //cout<<"";
+                                            cout<<"";
                                         }
                                         else if (swn < 0) {///  incoming
                                             int np2 = np + 1;
@@ -312,7 +415,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                                 npref = 6 * nphi + 1 - np2;
                                             }
                                             nfref = npref + (nt2 - 1) * 4 * nphi - 1;
-                                            Re(ie) -= e1_n(ie, nfref, iband) * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                            Re(ie) -= e1_n(ie, nfref, iband) * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                                         }
                                     }
                                 }
@@ -338,7 +441,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                         Ke(ie, ie) += a_f[iedge];
                                     }
                                     else if (swn < 0) {    ///  incoming
-                                        Re(ie) -= einsum * vg_n[iband] *
+                                        Re(ie) -= einsum * mfp_n[iband] *
                                                 (sweight(inf, 0) * norm[0] +
                                                         sweight(inf, 1) * norm[1]) * leng_edge;
                                     }
@@ -365,7 +468,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                         Ke(ie, ie) += a_f[iedge];
                                     }
                                     else if (swn < 0) {    ///  incoming
-                                        Re(ie) -= einsum * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                        Re(ie) -= einsum * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                                     }
                                 }
                             }
@@ -390,7 +493,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                         Ke(ie, ie) += a_f[iedge];
                                     }
                                     else if (swn < 0) {    ///  incoming
-                                        Re(ie) -= einsum * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                        Re(ie) -= einsum * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                                     }
                                 }
                             }
@@ -400,7 +503,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 /// DIFFUSIVE BOUNDARY
                         else if (eboundary(ib + numbDr * 2) == nlefti) {
-                            //cout<<"";
+                            cout<<"";
                             double einsum = 0.0;
                             for (int nft = 0; nft < nfmax; nft++){
                                 swn = ss(nft, 0) * norm[0] + ss(nft, 1) * norm[1];
@@ -422,13 +525,13 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                         Ke(ie, ie) += a_f[iedge];
                                     }
                                     else if (swn < 0){                  /// !         incoming
-                                        Re(ie) -= einsum * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                        Re(ie) -= einsum * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                                         //double ceo,ceo2;
                                         //ceo=floor(iter/100.);
                                         //ceo2=iter/100.;
                                         //if ((ceo2==ceo)&& (iter>0)){
-                                        //cout<<"nlefi-SWN00= "<<ib<<" "<<inf<<" "<<ie<<" t "<< t(ie)<<" "<< t(ie+numcell)<<" "<< t(ie+2*numcell)<<" eb: "<<eboundary(ib+numbDr*2)<<endl;
-                                        //cout<<"nlefi-SWN<0= "<<ib<<" "<<inf<<" "<<ie<<"                  swn "<< swn <<" "<<einsum<<" "<<Re(ie)<<endl;
+                                        //cout<<"nlefi-SWN00= "<<ib<<" "<<inf<<" "<<ie<<" t "<< t(ie)<<" "<< t(ie+numcell)<<" "<< t(ie+2*numcell)<<" eb: "<<eboundary(ib+numbDr*2)<<"\n";
+                                        //cout<<"nlefi-SWN<0= "<<ib<<" "<<inf<<" "<<ie<<"                  swn "<< swn <<" "<<einsum<<" "<<Re(ie)<<"\n";
                                         //
                                         //}
                                    }
@@ -442,10 +545,10 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                     int nf1 = np + nt * 4 * nphi;
                                     int npref, nfref;
                                     if (inf == nf1) {
-                                        //cout<<"";
+                                        cout<<"";
                                         if (swn >= 0){     ///  outgoing
                                             Ke(ie, ie) += a_f[iedge];
-                                            //cout<<"";
+                                            cout<<"";
                                         }
                                         else if (swn < 0) {///  incoming
                                             int np2 = np + 1;
@@ -457,7 +560,7 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                                                 npref = 6 * nphi + 1 - np2;
                                             }
                                             nfref = npref + (nt2 - 1) * 4 * nphi - 1;
-                                            Re(ie) -= e1_n(ie, nfref, iband) * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                            Re(ie) -= e1_n(ie, nfref, iband) * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                                         }
                                     }
                                 }
@@ -472,11 +575,11 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
 /// Boundary right
                             if (eboundary(ib + numbDr * 2) == nright || eboundary(ib + numbDr * 2) == nlefti * 2 ||
                                 eboundary(ib + numbDr * 2) == 40 || eboundary(ib + numbDr * 2) == 50){
-                                Re(ie) -= C_n[iband] / (4 * PI) * (Tright - Tref) * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                Re(ie) -= C_n[iband] / (4 * PI) * (Tright - Tref) * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                             }
 /// Boundary left
                             else if (eboundary(ib + numbDr * 2) == nleft || eboundary(ib + numbDr * 2) == nbottomi){
-                                Re(ie) -= C_n[iband] / (4 * PI) * (Tleft - Tref) * vg_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
+                                Re(ie) -= C_n[iband] / (4 * PI) * (Tleft - Tref) * mfp_n[iband] * (sweight(inf, 0) * norm[0] + sweight(inf, 1) * norm[1]) * leng_edge;
                             }
                         }
                         else if (swn >= 0){
@@ -487,30 +590,15 @@ void get_coefficient(const int nedge,int iter, int iband, int inf, int numbDr,
                 }
             }
         }//iedge
-        Ke(ie, ie) += 1 / tau_n[iband] * Cc(ie, 2) * weight(inf);
-        Re(ie) += e0_n(ie,iband) / tau_n[iband] * Cc(ie, 2) * weight(inf);
-	/*	
-	if (iter == 1) {
-	cout << "Re: " << endl;	
-	cout << "iter: " << iter << " iband: " << iband << " inf: " << inf << ' ' << "ie: " << ie << endl;
-    	for (int i = 0; i < numcell; i++)
-	    cout << Re(i) << ' ';
-	cout << endl;
-	}*/
-	/*
-	if (iband == 0) {
-	cout << "iter: " << iter << " iband: " << iband << " inf: " << inf << ' ' << "ie: " << ie << endl;
-	cout << "e0_n:" << endl;
-	cout << e0_n(ie,iband) << endl;
-	}*/
+        Ke(ie, ie) += Cc(ie, 2) * weight(inf);
+        Re(ie) += e0_n(ie,iband) * Cc(ie, 2) * weight(inf);
     }//ie
-    //cout << "Re: iter: " << iter << " iband: " << iband << " inf: " << inf + 1 << endl;
-    //for (int i = 0; i < numcell; i++)
-	//cout << Re(i) << endl;
 }
 
-///***
+// PETSc part which can only be run in Linux.
+#ifdef __linux__
 vector<double> solve_matrix (CMDArray<double>& Ke, CMDArray<double>& Re) {
+    //cout << "Linux" << endl;
     //ofstream fout("solution.out");
     int* nnz = new int[numcell], count;
     for (int i = 0; i < numcell; i++) {
@@ -523,7 +611,7 @@ vector<double> solve_matrix (CMDArray<double>& Ke, CMDArray<double>& Re) {
     //for (int i = 0; i < numcell; i++){
     	//for (int j = 0; j < numcell; j++)
              //fout << Ke(i, j) << ' ';
-        //fout << Re(i) << endl;
+        //fout << Re(i) << "\n";
     //}
     static char help[] = "Solving matrix.\n\n";
     const double offset = 1e16;
@@ -582,10 +670,82 @@ vector<double> solve_matrix (CMDArray<double>& Ke, CMDArray<double>& Re) {
     return x;
 /// finished petsc 
 }
+#endif
 
-///***
-void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>& e0,
-    CMDArray<double>& ee_n, CMDArray<double>& weight, CMDArray<double>& Temp_n, double* C_n, double Tref, ofstream& fout) {
+// Simple gauss method which used in Windows system.
+#if (defined _WIN32) || (defined _WIN64)
+vector<double> gauss(vector< vector<double> > Km_Re)
+{
+    int n = Km_Re.size();
+    for (int i=0; i<n; i++)
+    {
+        // Search for maximum in this column
+        double maxEl = fabs(Km_Re[i][i]);
+        int maxRow = i;
+        for (int k=i+1; k<n; k++)
+        {
+            if (fabs(Km_Re[k][i]) > maxEl)
+            {
+                maxEl = fabs(Km_Re[k][i]);
+                maxRow = k;
+            }
+        }
+        // Swap maximum row with current row (column by column)
+        for (int k=i; k<n+1; k++)
+        {
+            double tmp = Km_Re[maxRow][k];
+            Km_Re[maxRow][k] = Km_Re[i][k];
+            Km_Re[i][k] = tmp;
+        }
+        // Make all rows below this one 0 in current column
+        for (int k=i+1; k<n; k++)
+        {
+            double c = -Km_Re[k][i]/Km_Re[i][i];
+            for (int j=i; j<n+1; j++)
+            {
+                if (i==j)
+                {
+                    Km_Re[k][j] = 0;
+                }
+                else
+                {
+                    Km_Re[k][j] += c * Km_Re[i][j];
+                }
+            }
+        }
+    }
+    vector<double> x(n); // Solve equation Ax=b for an upper triangular matrix A
+    for (int i=n-1; i>=0; i--)
+    {
+        x[i] = Km_Re[i][n]/Km_Re[i][i];
+        for (int k=i-1; k>=0; k--)
+        {
+            Km_Re[k][n] -= Km_Re[k][i] * x[i];
+        }
+    }
+    return x;
+}
+
+vector<double> solve_matrix (CMDArray<double>& Ke, CMDArray<double>& Re) {
+    CMDArray<double> Km_active(numcell * numcell);
+    CMDArray<double> Re_active(numcell);
+    vector<double> line(numcell + 1,0);
+    vector< vector<double> > Km_Re(numcell, line);
+    for (int i1 = 0; i1 < numcell; i1++) {
+        for (int i2 = 0; i2 < numcell; i2++)
+            Km_Re[i1][i2] = Ke(i1, i2);
+            Km_Re[i1][numcell] = Re(i1);
+    }
+    vector<double> x(numcell) ;
+    x = gauss(Km_Re);
+    return x;
+}
+#endif
+
+// get the temperature of cells
+void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>& ee_n,
+		    CMDArray<double>& weight, CMDArray<double>& Temp_n, double* C_n, double Tref, ofstream& fout) {
+    CMDArray<double> e0(numcell);
     e0.set_zero();
     int width_numcell = 0, num_temp = numcell;
     while (num_temp > 0) {
@@ -593,15 +753,12 @@ void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>
 	    width_numcell ++;
     }
     int double_width = 12;
-    //cout << "ic: " << "e0: " << "Temp_n" << endl;
     for (int ic = 0; ic < numcell; ic++){
         for (int iinf = 0; iinf < nftot; iinf++){
             e0(ic) += ee_n(ic, iinf, iband) * weight(iinf);
          }
         Temp_n(ic, iband) = e0(ic) / C_n[iband] + Tref;
         e0(ic) = e0(ic) / (4 * PI);
-	//if (iband == 0)
-	    // << ic << ' ' << e0(ic) << ' ' << Temp_n(ic, iband) << endl;
     }//ic
     for (int i2 = 0; i2 < numcell; i2++) {
 	fout << setprecision(6) << setiosflags(ios::left);
@@ -610,7 +767,7 @@ void get_cell_temp (int iband, int nftot, CMDArray<double>& Cc, CMDArray<double>
     }
 }
 
-///***
+// recover temperature from energy density
 void recover_temp(CMDArray<double>& e0_n,
     CMDArray<double>& Temp_n, CMDArray<double>& Temp,
     int nband, double* R_n, double* C_n, double Tref) {
@@ -622,14 +779,13 @@ void recover_temp(CMDArray<double>& e0_n,
             Rnn += R_n[ibnd1];
         }
         Temp(icc) = RRn / Rnn;
-	//cout << icc << ' ' << RRn << ' ' << Rnn << endl;
     }//icc
     for (int icc2 = 0; icc2 < numcell; icc2++)
         for (int iibnd = 0; iibnd < nband; iibnd++)
             e0_n(icc2,iibnd) = C_n[iibnd] / (4 * PI) * (Temp(icc2) - Tref);
 }
 
-///***
+// interpolation
 void interpolation(int nband, CMDArray<double>& Temp, CMDArray<double>& Temnode_n,
     CMDArray<double>& node_r_m1T, CMDArray<int>& elmnod, CMDArray<int>& nelemnode,
     CMDArray<double>& Cc, CMDArray<double>& p,CMDArray<int>& t, ofstream& fout) {
@@ -661,7 +817,7 @@ void interpolation(int nband, CMDArray<double>& Temp, CMDArray<double>& Temnode_
     }
 }
 
-///***
+// calculate the heat transfer flux
 void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
     CMDArray<double>& sweight,CMDArray<int>& eboundary,CMDArray<int>& elemboundary,
     CMDArray<double>& ee_n, CMDArray<double>& weight,CMDArray<double>& ss, double* R_n, double* vg_n,
@@ -715,7 +871,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                         fout2<<"qleft2: "<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qleft2[iboun]<<"\n";
                         //fout <<setiosflags(ios::scientific)<<setprecision(5);
                         //fout << setw(width_numbDr) << iboun <<" " << setw(width_numcell) << elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" "<<setw(width_numcell) <<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
-                        //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<endl ;
+                        //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<"\n" ;
 		            }
                 }
             }
@@ -744,7 +900,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                         fout2<<"qright2:"<<setw(width_numbDr)<<iboun<<" "<<setw(double_width)<<qright2[iboun]<<"\n";
                         //fout <<setiosflags(ios::scientific)<<setprecision(5);
                         //fout << setw(width_numbDr) << iboun <<" " << setw(width_numcell) << elemboundary(iboun)<<" "<<infec<<" "<<" eb: "<<setw(width_numcell)<<eboundary(iboun)<<" "<<setw(width_numcell) <<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<" e: "<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
-                        //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<endl ;
+                        //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 0) * vg_n[ibandc]<<"  qlef:    "<<setw(double_width)<<qleft[iboun]<<"\n" ;
 		            }
 		        }
             }
@@ -767,7 +923,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                                 int nf1 = np + nt * 4 * nphi;
                                 int npref, nfref;
                                 if (infec == nf1) {
-                                    //cout<<"";
+                                    cout<<"";
                                     int np2 = np + 1;
                                     int nt2 = nt + 1;
                                     if (np2 > nphi && np2 <= 2 * nphi){
@@ -785,7 +941,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                     if ((ibandc == nband - 1) && (infec == nftot - 1)) {
 			   	        //fout<<setiosflags(ios::scientific)<<setprecision(4);
                         //fout << setw(width_numbDr) <<iboun <<" " << setw(width_numcell) <<elemboundary(iboun)<<" "<<infec<<" "<<" eb:"<<setw(width_numcell)<<eboundary(iboun)<<" " <<setw(width_numcell)<<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<"e"<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
-                        //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qtop: "<<setw(double_width)<<qtop[iboun]<<endl ;
+                        //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qtop: "<<setw(double_width)<<qtop[iboun]<<"\n" ;
 			        }
 		        }
             }
@@ -807,7 +963,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                                 int nf1 = np + nt * 4 * nphi;
                                 int npref, nfref;
                                 if (infec == nf1) {
-                                    //cout<<"";
+                                    cout<<"";
                                     int np2 = np + 1;
                                     int nt2 = nt + 1;
                                     if (np2 > nphi && np2 <= 2 * nphi){
@@ -825,7 +981,7 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
                     if ((ibandc == nband - 1) && (infec == nftot - 1)) {
 			   	        //fout<<setiosflags(ios::scientific)<<setprecision(4);
                         //fout << setw(width_numbDr) <<iboun <<" " << setw(width_numcell) <<elemboundary(iboun)<<" "<<infec<<" "<<" eb:"<<setw(width_numcell)<<eboundary(iboun)<<" " <<setw(width_numcell)<<eboundary(iboun+numb)<<" "<<setw(width_numcell)<<eboundary(iboun+2*numb)<<"e"<<setw(double_width)<<ee_n(elemboundary(iboun), infec, ibandc)<< " "<<setw(double_width)<<
-                        //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qbot: "<<setw(double_width)<<qbot[iboun]<<endl ;
+                        //ee_n(elemboundary(iboun), infec, ibandc)* weight(infec)* ss(infec, 1) * vg_n[ibandc]<<"  qbot: "<<setw(double_width)<<qbot[iboun]<<"\n" ;
  			        }
 		        }
             }
@@ -841,7 +997,8 @@ void get_heat_transfer_flux(double* C_n,double Tleft,double Tright,double Tref,
 
 }
 
-///***
+// calculate the error between results from
+// current iteration and the previous iteration
 double get_error(int nband, int nftot, CMDArray<double>& e1_n, CMDArray<double>& e2_n) {
     double error=0;
     for (int iband = 0; iband < nband; iband++){
@@ -853,21 +1010,58 @@ double get_error(int nband, int nftot, CMDArray<double>& e1_n, CMDArray<double>&
     return (error / nband);
 }
 
-///***
+// check the convergence
 bool check_convergence(double error, int nftot) {
     return (error <= numnode * nftot * 0.01);
+}
+
+// output ee
+void output_ee(CMDArray<double>& ee_n, CMDArray<double>& e0_n, int flag, int nband, int nftot) {
+    ofstream fout, fout1;
+    //cout << nband << endl;
+    if (flag) {
+    	fout.open("eeinputfilec.dat");
+        fout1.open("e0inputfilec.dat");
+    }
+    else {
+	fout.open("eeinputfilew.dat");
+	fout1.open("e0inputfilew.dat");
+    }
+    ostringstream output, output1;
+    int i, j, k;
+    for (i = 0; i < nband; i++)
+	for (j = 0; j < nftot; j++) {
+            for (k = 0; k < numcell; k++)
+                output << setprecision(12) << ee_n(k, j, i) << ' ';
+    	output << "\n";
+    }
+    fout << output.str();
+    fout.close();
+    for (i = 0; i < nband; i++) {
+        for (k = 0; k < numcell; k++)
+             output1 << setprecision(12) << e0_n(k, i) << ' ';
+	output1 << "\n";
+    }
+    fout1 << output1.str();
+    fout1.close();
 }
 
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 ///                                                 MAIN CODE
 /// $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-int main (void) {
+int main (int argc, char* argv[]) {
+    if (argc != 2) {
+	cout << "Wrong number of arguments!." << endl;
+	return 0;
+    }
     // Get constants.
     double L_n, Tleft, Tright, Tref, WFACTOR;
     int ntheta, nphi, max_iter, nband;
     string str;
     char new_line;
     ifstream fin_const("inputdata.dat");
+    ofstream fout_ret, fout_ret2, fout_node, fout_cell;
+    bool flag = (((string)argv[1]) == "1");
     getline(fin_const, str);
     fin_const >> L_n >> new_line;
     getline(fin_const, str);
@@ -887,25 +1081,26 @@ int main (void) {
     // Non-gray BTE - Different Bands.
     getline(fin_const, str);
     fin_const >> nband >> new_line;
-    //cout << nband << endl;
+    //cout << nband << "\n";
     double *tau_n = new double[nband];
     double *vg_n = new double[nband];
     double *Kn_n = new double[nband];
     double *R_n = new double[nband];
     double *C_n = new double[nband];
+    double *mfp_n = new double[nband];
     string buf;
     stringstream buffer;
     getline(fin_const, str);
-    //cout << str << endl;
+    //cout << str << "\n";
     getline(fin_const, buf);
-    //cout << buf << endl;
+    //cout << buf << "\n";
     buffer.str(buf);
     for (int i = 0; i < nband; i++)
         buffer >> *(vg_n + i);
     getline(fin_const, str);
-    //cout << str << endl;
+    //cout << str << "\n";
     getline(fin_const, buf);
-    //cout << buf << endl;
+    //cout << buf << "\n";
     buffer.clear();
     buffer.str(buf);
     for (int i = 0; i < nband; i++)
@@ -923,8 +1118,10 @@ int main (void) {
     for (int i = 0; i < nband; i++)
         buffer >> *(C_n + i);
     
-    for (int iibb = 0;iibb < nband; iibb++)
-        Kn_n[iibb] = vg_n[iibb] * tau_n[iibb] / L_n;
+    for (int iibb = 0;iibb < nband; iibb++) {
+	mfp_n[iibb] = vg_n[iibb] * tau_n[iibb];         
+	Kn_n[iibb] = mfp_n[iibb] / L_n;
+    }
     // Boundary numbers.
     int ntop, ndifftop;
     int nbottom, ndiffbottom;
@@ -979,6 +1176,12 @@ int main (void) {
     for (int i = 0; i < 2; i++)
         getline(fin_mesh, str);
     set<int> omit;
+    if (!flag) {
+	while (getline(fin_const, str)) {
+	    if (str == "without")
+		break;
+	}
+    }
     getline(fin_const, str);
     getline(fin_const, str);
     stringstream sss;
@@ -986,6 +1189,7 @@ int main (void) {
     int num;
     while (sss >> num) {
         omit.insert(num);
+	//cout << num << endl;
     }
     int* equi = new int[numb_ori];
     for (int i = 0; i < numb_ori; i++)
@@ -1055,81 +1259,75 @@ int main (void) {
     CMDArray<double> e1_n(numcell, nftot, nband);
     CMDArray<double> e2_n(numcell, nftot, nband);
     CMDArray<double> Temp_n(numcell,nband);
-    CMDArray<double> e0_n(numcell,nband);
-    CMDArray<double> e0(numcell), Temp(numcell);
-    initialize_e0(e0, Temp, Tleft, Tright);
+    CMDArray<double> e0_n(numcell,nband), Temp(numcell);
     ee_n.set_zero();
+    initialize_e0(ee_n, e0_n, Temp, Temp_n, Cc, weight, C_n, Tref, L_n, nband, nftot, flag);
     CMDArray<double> Temnode(numnode), Temnode_n(numnode);
     const int nedge = 3;
     cout << "Ncell: " << numcell << " Kn: " << Kn_n[0] << " nt: " << ntheta << "\n";
     clock_t t_start = clock();
     // Iteration
-    for (int iter=0; iter < max_iter; iter++){
-        ofstream fout_ret("Results.dat");
-        ofstream fout_ret2("Results2.dat");
-        ofstream fout_node("ResultTempNode.dat");
-        ofstream fout_cell("ResultTempCell.dat");
+    int iter_num;
+    for (iter_num = 0; iter_num < max_iter; iter_num ++){
         // Initialization
         for (int ibnde = 0; ibnde < nband; ibnde++)
             for (int infe = 0; infe < nftot; infe++)
                 for (int inn = 0; inn < numcell; inn++)
                     e1_n(inn,infe,ibnde) = ee_n(inn,infe,ibnde);
-	/*
-	cout << "e1_n: " << "iter: " << iter << endl;;
- 	for (int infe = 0; infe < nftot; infe++) {
-            for (int inn = 0; inn < numcell; inn++)
-                cout << e1_n(inn,infe, 0) << ' ';
-	    cout << endl;
-	}
-	*/
- 	ee_n.set_zero();
+        ee_n.set_zero();
         e2_n.set_zero();
-        // solve for each band.
+        // solve for each band
         for (int iband = 0; iband < nband; iband++){
             for (int inf = 0; inf < nftot; inf++) {
                 CMDArray<double> Ke(numcell, numcell), Re(numcell);
                 double xe[2 * 4];
-                get_coefficient(nedge,iter, iband, inf, numbDr, xe, vg_n, C_n, tau_n,
+                get_coefficient(nedge, iter_num, iband, inf, numbDr, xe, mfp_n, C_n,
                                 Tleft, Tright, Tref,L_n, ntheta, nphi, ntop, ntopi,
                                 nbottom, nbottomi, nleft, nlefti, nright, nrighti,
                                 nrighti1, p, t, sweight, ss, weight, Cc, eboundary,
                                 e0_n, e1_n, Ke, Re);
                 vector<double> sol = solve_matrix(Ke, Re);
-		/*
-		if (iband == nband - 1) {
-		    cout << "Re: " << endl;
-		    for (int i = 0; i < numcell; i++)
-			cout << Re(i) << ' ';		
-		cout << endl;
-		}
-		*/		
                 for (int id = 0; id < numcell; id++) {
                     ee_n(id, inf, iband) = sol[id];
                     e2_n(id, inf, iband) = sol[id];
-		    //cout << inf << ' ' << sol[id] << endl;
                 }
             }
-            get_cell_temp(iband, nftot, Cc, e0, ee_n, weight, Temp_n, C_n, Tref, fout_cell);
+	    if (flag)
+		fout_cell.open("ResultTempCell-constriction.dat", ofstream::out);
+    	    else fout_cell.open("ResultTempCell-without.dat", ofstream::out);
+            get_cell_temp(iband, nftot, Cc, ee_n, weight, Temp_n, C_n, Tref, fout_cell);
+	    fout_cell.close();
         }//iband
-	/*
-	cout << "Temp_n:" << endl;
-	for (int i = 0; i < numcell; i++)
-	    cout << Temp_n(i, 0) << ' ';
-	cout << endl;
-	*/
+        // post-processing
         recover_temp(e0_n, Temp_n, Temp, nband, R_n, C_n, Tref);
+	if (flag) {
+	    fout_ret.open("Results-constriction.dat", ofstream::out);
+	    fout_ret2.open("Results2-constriction.dat", ofstream::out);
+	    fout_node.open("ResultTempCell-constriction.dat", ofstream::out);
+	}
+    	else {
+	    fout_ret.open("Results-without.dat", ofstream::out);
+	    fout_ret2.open("Results2-without.dat", ofstream::out);
+	    fout_node.open("ResultTempCell-without.dat", ofstream::out);
+	}
         interpolation(nband, Temp, Temnode_n, node_r_m1T, elmnod, nelemnode, Cc, p, t, fout_node);
         get_heat_transfer_flux(C_n,Tleft,Tright,Tref,sweight, eboundary, elemboundary, ee_n, weight, ss, R_n, vg_n,
         nband, nftot, numbDr, ntop, nbottom, nleft, nright, fout_ret, fout_ret2);
         fout_ret.close();
         fout_ret2.close();
         fout_node.close();
-        fout_cell.close();
+        
         double error = get_error(nband, nftot, e1_n, e2_n);
-        cout << "Iter,Err_all = " << iter << " " << error << "\n";
-        if (check_convergence(error, nftot))
+        cout << "Iter,Err_all = " << iter_num << " " << error << "\n";
+        if (check_convergence(error, nftot)) {
+	    output_ee(ee_n, e0_n, flag, nband, nftot);
             break;
-    }//iter
+        }
+        if ((iter_num + 1) % 500 == 0)
+	    output_ee(ee_n, e0_n, flag, nband, nftot);
+    }//iter_num
+    if (iter_num == max_iter)
+	output_ee(ee_n, e0_n, flag, nband, nftot);
     clock_t t_end = clock();
     cout << "Time used: " << (double)(t_end - t_start) / CLOCKS_PER_SEC << "\n";
     delete[] tau_n;
@@ -1137,6 +1335,7 @@ int main (void) {
     delete[] Kn_n;
     delete[] R_n;
     delete[] C_n;
+    delete[] mfp_n;
     return 0;
 }
 
